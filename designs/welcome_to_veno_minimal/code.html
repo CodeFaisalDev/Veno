@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Welcome to Veno</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#ffb3b0",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#ae2f34",
+                        "secondary": "#5f5e5e",
+                        "on-primary-fixed-variant": "#8c151f",
+                        "primary-container": "#ae2f34",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1a1c1c",
+                        "secondary-fixed-dim": "#c8c6c5",
+                        "outline-variant": "#e0bfbd",
+                        "on-secondary": "#ffffff",
+                        "outline": "#8c706f",
+                        "on-error-container": "#93000a",
+                        "on-surface-variant": "#584140",
+                        "inverse-on-surface": "#f1f1f1",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-tertiary-container": "#97e7e6",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed-variant": "#004f4f",
+                        "tertiary-container": "#006a6a",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#a0f0f0",
+                        "secondary-fixed": "#e5e2e1",
+                        "surface-container-highest": "#e2e2e2",
+                        "inverse-primary": "#ffb3b0",
+                        "surface-bright": "#f9f9f9",
+                        "surface-variant": "#e2e2e2",
+                        "on-background": "#1a1c1c",
+                        "surface-container-high": "#e8e8e8",
+                        "inverse-surface": "#2f3131",
+                        "on-tertiary": "#ffffff",
+                        "tertiary-fixed-dim": "#84d4d3",
+                        "on-tertiary-fixed": "#002020",
+                        "primary": "#8d151f",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#e5e2e1",
+                        "on-primary-fixed": "#410006",
+                        "background": "#f9f9f9",
+                        "surface": "#f9f9f9",
+                        "on-secondary-container": "#656464",
+                        "on-primary-container": "#ffcdca",
+                        "surface-container-low": "#f3f3f3",
+                        "primary-fixed": "#ffdad8",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "surface-container": "#eeeeee",
+                        "surface-dim": "#dadada",
+                        "tertiary": "#005050"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "64px",
+                        "xl": "80px",
+                        "xs": "4px",
+                        "base": "8px",
+                        "sm": "12px",
+                        "md": "24px",
+                        "margin-mobile": "20px",
+                        "gutter": "24px",
+                        "lg": "48px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Outfit"],
+                        "headline-lg-mobile": ["Outfit"],
+                        "headline-md": ["Outfit"],
+                        "body-lg": ["Outfit"],
+                        "body-md": ["Outfit"],
+                        "headline-xl": ["Outfit"],
+                        "label-sm": ["Outfit"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "0em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "headline-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #ffffff; /* Pure white background */
+            color: #1a1c1c; /* Charcoal text (on-surface) */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow: hidden; /* Splash screen, no scrolling needed */
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 1s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 0.6s; }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .hero-pattern {
+            background-image: radial-gradient(#e5e2e1 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-position: center;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="relative flex items-center justify-center h-screen w-full bg-surface-container-lowest">
+<!-- Subtle background pattern for depth without clutter -->
+<div class="absolute inset-0 hero-pattern opacity-30 z-0"></div>
+<!-- Main Content Container -->
+<main class="relative z-10 flex flex-col items-center justify-center text-center px-margin-mobile md:px-margin-desktop w-full max-w-4xl mx-auto">
+<!-- Logo Area -->
+<div class="fade-in-up flex flex-col items-center mb-md">
+<!-- Minimalist Blood Drop Icon -->
+<div class="w-16 h-16 md:w-20 md:h-20 mb-sm flex items-center justify-center bg-primary rounded-full shadow-sm text-on-primary">
+<span class="material-symbols-outlined" style="font-size: 32px; font-variation-settings: 'FILL' 1;">bloodtype</span>
+</div>
+<!-- Brand Name -->
+<h1 class="font-headline-xl text-headline-xl text-on-surface tracking-tight">
+                Veno
+            </h1>
+</div>
+<!-- Tagline -->
+<div class="fade-in-up delay-1 mb-xl">
+<p class="font-body-lg text-body-lg text-secondary">
+                Vitality without Anxiety
+            </p>
+</div>
+<!-- Loading Indicator / Next Action (Optional for splash) -->
+<div class="fade-in-up delay-2 flex flex-col items-center">
+<!-- A subtle pulsing line or spinner could go here. Keeping it ultra-minimalist with a small dot indicator -->
+<div class="flex space-x-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<div class="w-2 h-2 rounded-full bg-surface-variant animate-pulse" style="animation-delay: 0.2s"></div>
+<div class="w-2 h-2 rounded-full bg-surface-variant animate-pulse" style="animation-delay: 0.4s"></div>
+</div>
+</div>
+</main>
+<script>
+        // Optional: Simple script to redirect after a few seconds, typical for a splash screen
+        // setTimeout(() => {
+        //     window.location.href = '/next-screen';
+        // }, 3000);
+    </script>
+</body></html>
