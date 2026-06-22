@@ -52,8 +52,13 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         projectId: projectId
       });
       token = tokenData.data;
-    } catch (error) {
-      console.warn('Error fetching Expo push token:', error);
+    } catch (error: any) {
+      const msg = error?.message || '';
+      if (msg.includes('Firebase') || msg.includes('googleServices') || msg.includes('credentials')) {
+        console.warn('Push Notifications: Firebase credentials are not configured in your local environment.');
+      } else {
+        console.warn('Error fetching Expo push token:', msg || error);
+      }
     }
   } else {
     console.log('Skipping push token request on simulator/emulator environment.');

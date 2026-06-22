@@ -448,7 +448,7 @@ export default function IntroScreen() {
 
             const dotBgColor = scrollX.interpolate({
               inputRange,
-              outputRange: [theme.colors.border.subtle, theme.colors.text.primary],
+              outputRange: [theme.colors.border.subtle, theme.colors.text.primary, theme.colors.border.subtle],
               extrapolate: 'clamp',
             });
 

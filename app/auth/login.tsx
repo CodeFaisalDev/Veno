@@ -12,6 +12,7 @@ import {
   LayoutAnimation,
   UIManager,
   Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -171,8 +172,12 @@ export default function LoginScreen() {
         translucent={false} 
       />
 
-      {/* Top Bar: Icon-only Back button (Section 7.3) */}
-      <View style={styles.topBar}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        {/* Top Bar: Icon-only Back button (Section 7.3) */}
+        <View style={styles.topBar}>
         <TouchableOpacity 
           style={[styles.backBtn, { 
             backgroundColor: theme.colors.bg.subtle,
@@ -186,6 +191,7 @@ export default function LoginScreen() {
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -287,9 +293,9 @@ export default function LoginScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeClosed size={20} color={theme.colors.text.secondary} />
-                ) : (
                   <Eye size={20} color={theme.colors.text.secondary} />
+                ) : (
+                  <EyeClosed size={20} color={theme.colors.text.secondary} />
                 )}
               </TouchableOpacity>
             </View>
@@ -357,6 +363,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Custom Error Notification Modal */}
       <Modal

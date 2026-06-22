@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { 
   ArrowLeft, 
   Camera, 
@@ -29,6 +30,33 @@ import {
   Sparkle
 } from 'phosphor-react-native';
 import { useTheme } from '../../theme';
+
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function decodeBase64(base64: string): ArrayBuffer {
+  const cleaned = base64.replace(/=+$/, '');
+  const len = cleaned.length;
+  const bufferLength = Math.floor(len * 0.75);
+  const arrayBuffer = new ArrayBuffer(bufferLength);
+  const bytes = new Uint8Array(arrayBuffer);
+
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const encoded1 = CHARS.indexOf(cleaned[i]);
+    const encoded2 = CHARS.indexOf(cleaned[i + 1]);
+    const encoded3 = i + 2 < len ? CHARS.indexOf(cleaned[i + 2]) : 0;
+    const encoded4 = i + 3 < len ? CHARS.indexOf(cleaned[i + 3]) : 0;
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (i + 2 < len) {
+      bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    }
+    if (i + 3 < len) {
+      bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+  }
+  return arrayBuffer;
+}
 
 interface ExtractedData {
   hemoglobin: number | null;
@@ -125,9 +153,10 @@ export default function MedicalScreen() {
       }
 
       // Convert image URI to array buffer
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      const arrayBuffer = await new Response(blob).arrayBuffer();
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const arrayBuffer = decodeBase64(base64);
 
       const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `med_${Date.now()}.${fileExt}`;

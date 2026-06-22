@@ -12,6 +12,7 @@ import {
   LayoutAnimation,
   UIManager,
   Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -118,6 +119,12 @@ export default function SignUpScreen() {
           return;
         }
 
+        if (data?.user && (!data.user.identities || data.user.identities.length === 0)) {
+          Alert.alert('Account Exists', 'This email is already registered. Please sign in instead.');
+          router.push('/auth/login');
+          return;
+        }
+
         const { error: autoSignInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password.trim(),
@@ -130,14 +137,24 @@ export default function SignUpScreen() {
         return;
       }
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password.trim(),
         options: { data: { full_name: fullName.trim() } },
       });
 
       if (error) {
+        const errMsg = error.message.toLowerCase();
+        if (errMsg.includes('already registered') || errMsg.includes('already been registered')) {
+          showError('Account Exists', 'This email is already registered. Please sign in instead.');
+          return;
+        }
         showError('Account Creation Failed', error.message);
+        return;
+      }
+
+      if (data?.user && (!data.user.identities || data.user.identities.length === 0)) {
+        showError('Account Exists', 'This email is already registered. Please sign in instead.');
         return;
       }
 
@@ -187,7 +204,11 @@ export default function SignUpScreen() {
         translucent={false} 
       />
 
-      <View style={styles.topBar}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.topBar}>
         <TouchableOpacity 
           style={[styles.backBtn, { 
             backgroundColor: theme.colors.bg.subtle,
@@ -201,6 +222,7 @@ export default function SignUpScreen() {
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -322,9 +344,9 @@ export default function SignUpScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeClosed size={20} color={theme.colors.text.secondary} />
-                ) : (
                   <Eye size={20} color={theme.colors.text.secondary} />
+                ) : (
+                  <EyeClosed size={20} color={theme.colors.text.secondary} />
                 )}
               </TouchableOpacity>
             </View>
@@ -360,73 +382,74 @@ export default function SignUpScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
 
-      {/* Pinned to bottom Area */}
-      <View style={[styles.bottomArea, { backgroundColor: theme.colors.bg.page }]}>
-        <TouchableOpacity
-          style={[
-            styles.primaryBtn, 
-            { borderRadius: theme.radius.md },
-            termsAccepted ? {
-              backgroundColor: theme.colors.brand.default,
-            } : {
-              backgroundColor: theme.colors.border.strong,
-              opacity: 0.45,
-            }
-          ]}
-          onPress={handleSignUp}
-          disabled={isLoading || !termsAccepted}
-          activeOpacity={0.8}
-        >
-          {isLoading ? (
-            <CustomLoader size="small" color={theme.colors.text.onColor} />
-          ) : (
-            <Text style={[styles.primaryBtnText, { 
-              fontFamily: theme.typography.bodyLg.fontFamily,
-              color: theme.colors.text.onColor 
-            }]}>Create Account</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.orRow}>
-          <View style={[styles.orLine, { backgroundColor: theme.colors.border.subtle }]} />
-          <Text style={[styles.orText, { 
-            fontFamily: theme.typography.caption.fontFamily,
-            color: theme.colors.text.tertiary 
-          }]}>OR</Text>
-          <View style={[styles.orLine, { backgroundColor: theme.colors.border.subtle }]} />
-        </View>
-
-        <TouchableOpacity 
-          style={[styles.ghostBtn, { 
-            backgroundColor: theme.colors.bg.surface,
-            borderColor: theme.colors.border.default,
-            borderRadius: theme.radius.md 
-          }]} 
-          onPress={handleGoogleSignUp} 
-          disabled={isLoading} 
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.ghostBtnText, { 
-            fontFamily: theme.typography.bodyLg.fontFamily,
-            color: theme.colors.text.primary 
-          }]}>Continue with Google</Text>
-        </TouchableOpacity>
-
-        <View style={styles.redirectRow}>
-          <Text style={[styles.redirectLabel, { 
-            fontFamily: theme.typography.body.fontFamily,
-            color: theme.colors.text.secondary 
-          }]}>Already have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/auth/login')} disabled={isLoading}>
-            <Text style={[styles.redirectLink, { 
-              fontFamily: theme.typography.bodyLg.fontFamily,
-              color: theme.colors.brand.default 
-            }]}>Sign In</Text>
+        {/* Pinned to bottom Area (moved inside ScrollView) */}
+        <View style={[styles.bottomArea, { backgroundColor: theme.colors.bg.page, marginTop: 16 }]}>
+          <TouchableOpacity
+            style={[
+              styles.primaryBtn, 
+              { borderRadius: theme.radius.md },
+              termsAccepted ? {
+                backgroundColor: theme.colors.brand.default,
+              } : {
+                backgroundColor: theme.colors.border.strong,
+                opacity: 0.45,
+              }
+            ]}
+            onPress={handleSignUp}
+            disabled={isLoading || !termsAccepted}
+            activeOpacity={0.8}
+          >
+            {isLoading ? (
+              <CustomLoader size="small" color={theme.colors.text.onColor} />
+            ) : (
+              <Text style={[styles.primaryBtnText, { 
+                fontFamily: theme.typography.bodyLg.fontFamily,
+                color: theme.colors.text.onColor 
+              }]}>Create Account</Text>
+            )}
           </TouchableOpacity>
+
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border.subtle }]} />
+            <Text style={[styles.orText, { 
+              fontFamily: theme.typography.caption.fontFamily,
+              color: theme.colors.text.tertiary 
+            }]}>OR</Text>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border.subtle }]} />
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.ghostBtn, { 
+              backgroundColor: theme.colors.bg.surface,
+              borderColor: theme.colors.border.default,
+              borderRadius: theme.radius.md 
+            }]} 
+            onPress={handleGoogleSignUp} 
+            disabled={isLoading} 
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.ghostBtnText, { 
+              fontFamily: theme.typography.bodyLg.fontFamily,
+              color: theme.colors.text.primary 
+            }]}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          <View style={styles.redirectRow}>
+            <Text style={[styles.redirectLabel, { 
+              fontFamily: theme.typography.body.fontFamily,
+              color: theme.colors.text.secondary 
+            }]}>Already have an account? </Text>
+            <TouchableOpacity onPress={() => router.push('/auth/login')} disabled={isLoading}>
+              <Text style={[styles.redirectLink, { 
+                fontFamily: theme.typography.bodyLg.fontFamily,
+                color: theme.colors.brand.default 
+              }]}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Custom Error Notification Modal */}
       <Modal

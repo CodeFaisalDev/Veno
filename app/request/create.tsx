@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Alert,
   StatusBar,
   Modal,
   Platform,
@@ -16,6 +15,7 @@ import {
   DeviceEventEmitter,
   KeyboardAvoidingView,
 } from 'react-native';
+import CustomModal from '../../components/CustomModal';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
@@ -74,6 +74,27 @@ export default function CreateRequestScreen() {
   const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
+  // Custom Modal States
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalConfig, setModalConfig] = useState<{
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+    type?: 'success' | 'warning' | 'danger' | 'info' | 'question';
+  }>({
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
+
+  const showCustomAlert = (config: typeof modalConfig) => {
+    setModalConfig(config);
+    setModalVisible(true);
+  };
+
   // Interactive Map picker states
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.8103,
@@ -111,11 +132,23 @@ export default function CreateRequestScreen() {
           longitude: resLng
         };
       } else {
-        Alert.alert('No Results', 'We could not locate that place. Try adding city/district names (e.g. Dhaka).');
+        showCustomAlert({
+          title: 'No Results',
+          description: 'We could not locate that place. Try adding city/district names (e.g. Dhaka).',
+          confirmText: 'OK',
+          type: 'warning',
+          onConfirm: () => setModalVisible(false),
+        });
       }
     } catch (e) {
       console.warn('Geocoding search query failed:', e);
-      Alert.alert('Search Error', 'Failed to search for this location. Please check your internet connection.');
+      showCustomAlert({
+        title: 'Search Error',
+        description: 'Failed to search for this location. Please check your internet connection.',
+        confirmText: 'OK',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
     } finally {
       setIsSearchingLocation(false);
     }
@@ -164,7 +197,13 @@ export default function CreateRequestScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location access is required to pin coordinates on the map.');
+        showCustomAlert({
+          title: 'Permission Denied',
+          description: 'Location access is required to pin coordinates on the map.',
+          confirmText: 'OK',
+          type: 'danger',
+          onConfirm: () => setModalVisible(false),
+        });
         setIsLoading(false);
         return;
       }
@@ -238,15 +277,33 @@ export default function CreateRequestScreen() {
       setStep(2);
     } else if (step === 2) {
       if (requestFor === 'SOMEONE_ELSE' && patientName.trim().length < 3) {
-        Alert.alert('Validation Error', 'Patient name must be at least 3 characters.');
+        showCustomAlert({
+          title: 'Validation Error',
+          description: 'Patient name must be at least 3 characters.',
+          confirmText: 'OK',
+          type: 'warning',
+          onConfirm: () => setModalVisible(false),
+        });
         return;
       }
       if (!bloodGroup) {
-        Alert.alert('Validation Error', 'Please select the required blood group.');
+        showCustomAlert({
+          title: 'Validation Error',
+          description: 'Please select the required blood group.',
+          confirmText: 'OK',
+          type: 'warning',
+          onConfirm: () => setModalVisible(false),
+        });
         return;
       }
       if (!locationAddress) {
-        Alert.alert('Validation Error', 'Please pin the donation destination coordinates.');
+        showCustomAlert({
+          title: 'Validation Error',
+          description: 'Please pin the donation destination coordinates.',
+          confirmText: 'OK',
+          type: 'warning',
+          onConfirm: () => setModalVisible(false),
+        });
         return;
       }
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -275,7 +332,9 @@ export default function CreateRequestScreen() {
           urgency: urgency,
           units_needed: unitsNeeded,
           location_address: locationAddress,
-          location_coords: { type: 'Point', coordinates: [longitude, latitude] },
+          location_coords: (longitude !== null && latitude !== null && !isNaN(longitude) && !isNaN(latitude)) 
+            ? `POINT(${longitude} ${latitude})` 
+            : null,
           notes: notes.trim(),
           status: 'ACTIVE',
           requester_id: user.id
@@ -294,21 +353,25 @@ export default function CreateRequestScreen() {
         console.warn('Matching algorithm Edge function invocation warnings:', invokeErr);
       }
 
-      Alert.alert(
-        'Request Published',
-        `Blood request for ${bloodGroup} successfully created. Nearby compatible active donors are being scored and notified.`,
-        [
-          {
-            text: 'View Map Panel',
-            onPress: () => {
-              DeviceEventEmitter.emit('profileUpdated');
-              router.replace('/(tabs)/request');
-            }
-          }
-        ]
-      );
+      showCustomAlert({
+        title: 'Request Published',
+        description: `Blood request for ${bloodGroup} successfully created. Nearby compatible active donors are being scored and notified.`,
+        confirmText: 'View Map Panel',
+        type: 'success',
+        onConfirm: () => {
+          setModalVisible(false);
+          DeviceEventEmitter.emit('profileUpdated');
+          router.replace('/(tabs)/request');
+        }
+      });
     } catch (err: any) {
-      Alert.alert('Submission Failed', err.message || 'Failed to submit blood request.');
+      showCustomAlert({
+        title: 'Submission Failed',
+        description: err.message || 'Failed to submit blood request.',
+        confirmText: 'OK',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false)
+      });
     } finally {
       setIsLoading(false);
     }
@@ -384,12 +447,13 @@ export default function CreateRequestScreen() {
         </View>
       ) : (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
         >
           <View style={{ flex: 1 }}>
             <ScrollView 
+              style={{ flex: 1 }}
               contentContainerStyle={styles.scrollContent} 
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -894,6 +958,16 @@ export default function CreateRequestScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+      <CustomModal
+        visible={modalVisible}
+        title={modalConfig.title}
+        description={modalConfig.description}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={modalConfig.onCancel || (() => setModalVisible(false))}
+        type={modalConfig.type || 'info'}
+      />
     </SafeAreaView>
   );
 }

@@ -112,27 +112,47 @@ TaskManager.defineTask(TRACKING_TASK_NAME, async ({ data, error }) => {
       await updateTrackingInterval(currentTier, requestId);
     }
 
-    const distanceMoved = getHaversineDistance(lastBroadcast.lat, lastBroadcast.lng, lat, lng) * 1000; // in meters
-    const timeSinceLast = now - lastBroadcast.time;
+    // Load throttling states and user ID from AsyncStorage
+    const lastLatStr = await AsyncStorage.getItem('last_broadcast_lat');
+    const lastLngStr = await AsyncStorage.getItem('last_broadcast_lng');
+    const lastTimeStr = await AsyncStorage.getItem('last_broadcast_time');
+    const cachedUserId = await AsyncStorage.getItem('active_tracking_user_id');
+
+    const lastLat = lastLatStr ? parseFloat(lastLatStr) : 0;
+    const lastLng = lastLngStr ? parseFloat(lastLngStr) : 0;
+    const lastTime = lastTimeStr ? parseInt(lastTimeStr, 10) : 0;
+
+    const distanceMoved = getHaversineDistance(lastLat, lastLng, lat, lng) * 1000; // in meters
+    const timeSinceLast = now - lastTime;
 
     // Filter redundant stationary updates (must satisfy both distance and time thresholds)
-    if (lastBroadcast.time !== 0) {
+    if (lastTime !== 0) {
       if (distanceMoved < minDistance) return;
       if (timeSinceLast < minInterval) return;
     }
 
-    lastBroadcast = { lat, lng, time: now };
+    // Persist current coordinates immediately to throttle next ticks
+    await AsyncStorage.setItem('last_broadcast_lat', lat.toString());
+    await AsyncStorage.setItem('last_broadcast_lng', lng.toString());
+    await AsyncStorage.setItem('last_broadcast_time', now.toString());
 
     const channel = getOrCreateChannel(requestId);
     if (channel) {
-      const { data: { user } } = await supabase.auth.getUser();
+      let finalUserId = cachedUserId;
+      if (!finalUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          finalUserId = user.id;
+          await AsyncStorage.setItem('active_tracking_user_id', user.id);
+        }
+      }
       await channel.track({
         lat,
         lng,
         heading: heading || 0,
         speed: speed || 0,
         timestamp: now,
-        userId: user?.id,
+        userId: finalUserId || undefined,
       });
       console.log(`Broadcasted en route location to presence channel tracking:${requestId}`);
     }
@@ -158,6 +178,16 @@ export async function startLiveTracking(requestId: string, destLat?: number, des
     await AsyncStorage.setItem(ASYNC_STORAGE_KEY, requestId);
     if (destLat !== undefined && destLng !== undefined) {
       await AsyncStorage.setItem(DEST_COORDS_STORAGE_KEY, JSON.stringify({ latitude: destLat, longitude: destLng }));
+    }
+
+    // Pre-cache user ID for background updates
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await AsyncStorage.setItem('active_tracking_user_id', user.id);
+      }
+    } catch (e) {
+      console.warn('Could not cache user ID in startLiveTracking:', e);
     }
 
     // Initialize/subscribe presence channel
@@ -219,6 +249,10 @@ export async function stopLiveTracking() {
   try {
     await AsyncStorage.removeItem(ASYNC_STORAGE_KEY);
     await AsyncStorage.removeItem(DEST_COORDS_STORAGE_KEY);
+    await AsyncStorage.removeItem('active_tracking_user_id');
+    await AsyncStorage.removeItem('last_broadcast_lat');
+    await AsyncStorage.removeItem('last_broadcast_lng');
+    await AsyncStorage.removeItem('last_broadcast_time');
 
     if (activeChannel) {
       activeChannel.untrack();

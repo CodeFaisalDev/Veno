@@ -789,7 +789,9 @@ export default function ProfileSetupScreen() {
           district: district || 'Dhaka',
           upazila: upazila || 'Dhaka City',
           phone_number: formattedPhone,
-          location_coords: latitude && longitude ? { type: 'Point', coordinates: [longitude, latitude] } : null,
+          location_coords: (latitude !== null && longitude !== null && !isNaN(latitude) && !isNaN(longitude)) 
+            ? `POINT(${longitude} ${latitude})` 
+            : null,
           push_token: pushToken,
         })
         .eq('id', user.id);
@@ -855,10 +857,11 @@ export default function ProfileSetupScreen() {
         backgroundColor={theme.colors.bg.page} 
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
         <ScrollView 
+          style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContainer} 
           keyboardShouldPersistTaps="handled" 
           showsVerticalScrollIndicator={false}

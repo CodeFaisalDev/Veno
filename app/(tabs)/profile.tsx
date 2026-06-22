@@ -3,11 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   Alert,
   StatusBar,
+  ActivityIndicator,
+  Switch,
+  TouchableOpacity,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomLoader from '../../components/CustomLoader';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
@@ -17,11 +20,51 @@ import {
   SealCheck, 
   Hourglass, 
   Trophy, 
-  HeartStraight 
+  HeartStraight,
+  Camera,
+  WarningCircle,
+  SignOut,
+  Moon,
+  Sun,
+  Bell,
 } from 'phosphor-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import AvatarImage from '../../components/AvatarImage';
+import CustomModal from '../../components/CustomModal';
+import { registerForPushNotificationsAsync } from '../../utils/notifications';
+import AnimatedPressable from '../../components/AnimatedPressable';
+import AnimatedScreenWrapper from '../../components/AnimatedScreenWrapper';
+
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function decodeBase64(base64: string): ArrayBuffer {
+  const cleaned = base64.replace(/=+$/, '');
+  const len = cleaned.length;
+  const bufferLength = Math.floor(len * 0.75);
+  const arrayBuffer = new ArrayBuffer(bufferLength);
+  const bytes = new Uint8Array(arrayBuffer);
+
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const encoded1 = CHARS.indexOf(cleaned[i]);
+    const encoded2 = CHARS.indexOf(cleaned[i + 1]);
+    const encoded3 = i + 2 < len ? CHARS.indexOf(cleaned[i + 2]) : 0;
+    const encoded4 = i + 3 < len ? CHARS.indexOf(cleaned[i + 3]) : 0;
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (i + 2 < len) {
+      bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    }
+    if (i + 3 < len) {
+      bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+  }
+  return arrayBuffer;
+}
 
 interface UserProfile {
   id: string;
@@ -33,6 +76,7 @@ interface UserProfile {
   district: string;
   upazila: string;
   created_at?: string;
+  avatar_url?: string | null;
 }
 
 interface DonorStatus {
@@ -48,6 +92,29 @@ export default function ProfileScreen() {
   const [donorStatus, setDonorStatus] = useState<DonorStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [qrMatrix, setQrMatrix] = useState<boolean[][]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  // Custom Modal Alert State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalConfig, setModalConfig] = useState<{
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+    type?: 'success' | 'warning' | 'danger' | 'info' | 'question';
+  }>({
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
+
+  const showCustomAlert = (config: typeof modalConfig) => {
+    setModalConfig(config);
+    setModalVisible(true);
+  };
 
   const generateMockQR = () => {
     // 14x14 matrix for 56px size (4px per cell)
@@ -97,6 +164,12 @@ export default function ProfileScreen() {
           .single();
         setDonorStatus(statusData);
 
+        // Load notifications settings
+        const storedNotif = await AsyncStorage.getItem('notifications_enabled');
+        if (storedNotif !== null) {
+          setNotificationsEnabled(storedNotif === 'true');
+        }
+
         generateMockQR();
       } catch (err) {
         console.error(err);
@@ -108,8 +181,156 @@ export default function ProfileScreen() {
     fetchData();
   }, []);
 
+  const handlePickAvatar = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        showCustomAlert({
+          title: 'Permission Denied',
+          description: 'Library permissions are required to choose photo.',
+          type: 'warning',
+          onConfirm: () => setModalVisible(false),
+        });
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+        await handleUploadAvatar(selectedImage.uri);
+      }
+    } catch (e: any) {
+      console.warn('Avatar picker failed:', e);
+      showCustomAlert({
+        title: 'Picker Error',
+        description: 'An error occurred selecting photo.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    }
+  };
+
+  const handleUploadAvatar = async (imageUri: string) => {
+    setIsUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User session not found.');
+
+      // Read file as Base64 using expo-file-system/legacy
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convert Base64 to ArrayBuffer
+      const arrayBuffer = decodeBase64(base64);
+
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `avatar_${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage bucket
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, arrayBuffer, {
+          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Save public URL to profiles table
+      const { error: dbError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (dbError) throw dbError;
+
+      // Update local state
+      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
+      
+      showCustomAlert({
+        title: 'Success',
+        description: 'Profile photo updated successfully.',
+        type: 'success',
+        onConfirm: () => setModalVisible(false),
+      });
+    } catch (err: any) {
+      console.error('Avatar upload failed:', err);
+      showCustomAlert({
+        title: 'Upload Failed',
+        description: err.message || 'Failed to upload image.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    showCustomAlert({
+      title: 'Log Out',
+      description: 'Are you sure you want to log out of Veno?',
+      confirmText: 'Log Out',
+      cancelText: 'Cancel',
+      type: 'danger',
+      onConfirm: async () => {
+        setModalVisible(false);
+        setIsLoading(true);
+        await supabase.auth.signOut();
+      },
+      onCancel: () => setModalVisible(false)
+    });
+  };
+
   const handleShareCard = () => {
-    Alert.alert('Share Card', 'Your Digital Donor Card link has been copied to clipboard!');
+    showCustomAlert({
+      title: 'Share Card',
+      description: 'Your Digital Donor Card link has been copied to clipboard!',
+      type: 'success',
+      onConfirm: () => setModalVisible(false),
+    });
+  };
+
+  const handleToggleNotifications = async (value: boolean) => {
+    try {
+      setNotificationsEnabled(value);
+      await AsyncStorage.setItem('notifications_enabled', value ? 'true' : 'false');
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (!value) {
+        // Clear token from DB if disabled
+        await supabase
+          .from('profiles')
+          .update({ push_token: null })
+          .eq('id', user.id);
+      } else {
+        // Re-enable (register token if allowed)
+        const token = await registerForPushNotificationsAsync();
+        if (token) {
+          await supabase
+            .from('profiles')
+            .update({ push_token: token })
+            .eq('id', user.id);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to update push notification toggle state:', e);
+    }
   };
 
   if (isLoading) {
@@ -137,7 +358,8 @@ export default function ProfileScreen() {
     : 1;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg.page }]} edges={['top']}>
+    <AnimatedScreenWrapper style={{ backgroundColor: theme.colors.bg.page }} screenIndex={2}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg.page }]} edges={['top']}>
       <StatusBar 
         barStyle={theme.dark ? "light-content" : "dark-content"} 
         backgroundColor={theme.colors.bg.page} 
@@ -229,44 +451,100 @@ export default function ProfileScreen() {
           </LinearGradient>
         </View>
 
+        {/* User profile photo selector */}
+        <View style={styles.avatarSection}>
+          <TouchableOpacity 
+            style={[styles.avatarWrapper, { borderColor: theme.colors.border.subtle }]} 
+            onPress={handlePickAvatar}
+            disabled={isUploading}
+            activeOpacity={0.8}
+          >
+            <AvatarImage 
+              uri={profile?.avatar_url} 
+              size={90} 
+              borderWidth={2}
+              borderColor={profile?.verification_badge ? theme.colors.status.active : theme.colors.border.default}
+            />
+            <View style={[styles.cameraOverlay, { backgroundColor: theme.colors.brand.default }]}>
+              {isUploading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Camera size={14} color="#FFF" weight="fill" />
+              )}
+            </View>
+          </TouchableOpacity>
+          
+          <Text style={[styles.profileNameText, { 
+            fontFamily: theme.typography.h2.fontFamily,
+            color: theme.colors.text.primary 
+          }]}>
+            {profile?.full_name || 'Donor User'}
+          </Text>
+          
+          {/* Badge Display */}
+          {profile?.verification_badge ? (
+            <View style={[styles.verificationPill, { backgroundColor: theme.colors.status.activeBg, borderColor: theme.colors.status.active + '20' }]}>
+              <SealCheck size={14} color={theme.colors.status.active} weight="fill" />
+              <Text style={[styles.verificationPillText, { color: theme.colors.status.activeText, fontFamily: theme.typography.badge.fontFamily }]}>
+                VERIFIED IDENTITY
+              </Text>
+            </View>
+          ) : (
+            <AnimatedPressable 
+              style={[styles.verificationPill, { backgroundColor: theme.colors.status.criticalBg, borderColor: theme.colors.status.critical + '20' }]}
+              onPress={() => router.push('/verify/nid-upload')}
+            >
+              <WarningCircle size={14} color={theme.colors.status.critical} weight="fill" />
+              <Text style={[styles.verificationPillText, { color: theme.colors.status.criticalText, fontFamily: theme.typography.badge.fontFamily }]}>
+                NOT VERIFIED (TAP TO VERIFY)
+              </Text>
+            </AnimatedPressable>
+          )}
+        </View>
+
         {/* Action button row (Section 7.11 outline buttons) */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity 
+          <AnimatedPressable 
             style={[styles.actionButton, { 
               borderRadius: theme.radius.md,
               borderColor: theme.colors.border.default,
               backgroundColor: theme.colors.bg.surface,
             }]} 
             onPress={handleShareCard}
-            activeOpacity={0.8}
           >
             <ShareNetwork size={16} color={theme.colors.text.primary} />
             <Text style={[styles.actionBtnText, { 
               fontFamily: theme.typography.body.fontFamily,
               color: theme.colors.text.primary 
             }]}>Share Link</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
           
-          <TouchableOpacity 
+          <AnimatedPressable 
             style={[styles.actionButton, { 
               borderRadius: theme.radius.md,
               borderColor: theme.colors.border.default,
               backgroundColor: theme.colors.bg.surface,
             }]} 
-            onPress={() => Alert.alert('Saved', 'Saved offline to application cache.')}
-            activeOpacity={0.8}
+            onPress={() => {
+              showCustomAlert({
+                title: 'Saved',
+                description: 'Saved offline to application cache.',
+                type: 'success',
+                onConfirm: () => setModalVisible(false),
+              });
+            }}
           >
             <QrCode size={16} color={theme.colors.text.primary} />
             <Text style={[styles.actionBtnText, { 
               fontFamily: theme.typography.body.fontFamily,
               color: theme.colors.text.primary 
             }]}>Save Offline</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
 
         {/* Verification banner (Warm notification card) */}
         {!profile?.verification_badge && (
-          <TouchableOpacity 
+          <AnimatedPressable 
             style={[styles.verifyBanner, { 
               backgroundColor: theme.colors.brand.subtle,
               borderRadius: theme.radius.lg,
@@ -274,7 +552,6 @@ export default function ProfileScreen() {
               borderWidth: theme.dark ? 0 : 1,
             }]} 
             onPress={() => router.push('/verify/nid-upload')}
-            activeOpacity={0.8}
           >
             <SealCheck size={20} color={theme.colors.brand.default} weight="regular" />
             <View style={styles.verifyTextContainer}>
@@ -289,7 +566,7 @@ export default function ProfileScreen() {
                 Upload NID/Passport to earn your green verification badge and +100 points.
               </Text>
             </View>
-          </TouchableOpacity>
+          </AnimatedPressable>
         )}
 
         {/* Cooldown banner */}
@@ -315,6 +592,100 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
+
+        {/* Preferences / Settings Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { 
+            fontFamily: theme.typography.caption.fontFamily,
+            color: theme.colors.text.secondary 
+          }]}>Preferences</Text>
+          
+          <View style={[styles.settingsCard, { 
+            backgroundColor: theme.colors.bg.surface,
+            borderColor: theme.colors.border.subtle,
+            borderRadius: theme.radius.lg,
+            borderWidth: theme.dark ? 0 : 1,
+            ...(!theme.dark ? theme.shadows.elevation1 : {}),
+          }]}>
+            {/* Theme selector row */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  {theme.dark ? (
+                    <Moon size={20} color={theme.colors.text.secondary} />
+                  ) : (
+                    <Sun size={20} color={theme.colors.text.secondary} />
+                  )}
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>Theme Mode</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Adjust app theme settings</Text>
+              </View>
+              
+              <View style={styles.themeModeButtonsContainer}>
+                {(['light', 'dark', 'system'] as const).map((mode) => {
+                  const isSelected = theme.themeMode === mode;
+                  return (
+                    <AnimatedPressable
+                      key={mode}
+                      onPress={() => theme.setThemeMode(mode)}
+                      style={[
+                        styles.themeModeBtn,
+                        {
+                          borderColor: isSelected ? theme.colors.brand.default : theme.colors.border.subtle,
+                          backgroundColor: isSelected ? theme.colors.brand.subtle : 'transparent',
+                          borderRadius: theme.radius.md,
+                        }
+                      ]}
+                    >
+                      <Text style={[
+                        styles.themeModeBtnText,
+                        {
+                          color: isSelected ? theme.colors.brand.text : theme.colors.text.secondary,
+                          fontWeight: isSelected ? '600' : '400',
+                          fontFamily: theme.typography.caption.fontFamily,
+                        }
+                      ]}>
+                        {mode.toUpperCase()}
+                      </Text>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* Notification toggle row */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Bell size={20} color={theme.colors.text.secondary} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>Push Notifications</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Receive alerts for matching requests</Text>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleToggleNotifications}
+                trackColor={{ false: theme.colors.border.strong, true: theme.colors.brand.default }}
+                thumbColor={theme.colors.text.onColor}
+                ios_backgroundColor={theme.colors.border.subtle}
+              />
+            </View>
+          </View>
+        </View>
 
         {/* Achievements Section */}
         <View style={styles.section}>
@@ -365,9 +736,37 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+        {/* Log Out Button */}
+        <AnimatedPressable 
+          style={[styles.logoutButton, { 
+            borderRadius: theme.radius.md,
+            borderColor: theme.colors.status.critical,
+            backgroundColor: theme.colors.status.criticalBg,
+          }]} 
+          onPress={handleLogout}
+        >
+          <SignOut size={16} color={theme.colors.status.criticalText} />
+          <Text style={[styles.logoutButtonText, { 
+            fontFamily: theme.typography.body.fontFamily,
+            color: theme.colors.status.criticalText 
+          }]}>Log Out</Text>
+        </AnimatedPressable>
 
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Reusable Custom Alert modal overlay */}
+      <CustomModal
+        visible={modalVisible}
+        title={modalConfig.title}
+        description={modalConfig.description}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={modalConfig.onCancel}
+        type={modalConfig.type}
+      />
+      </SafeAreaView>
+    </AnimatedScreenWrapper>
   );
 }
 
@@ -389,7 +788,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   cardWrapper: {
     alignItems: 'center',
@@ -579,5 +978,108 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     lineHeight: 16,
+  },
+  logoutButton: {
+    height: 48,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  logoutButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  avatarSection: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  avatarWrapper: {
+    position: 'relative',
+    borderRadius: 9999,
+    borderWidth: 1,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  profileNameText: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  verificationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  verificationPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  settingsCard: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+  },
+  settingsLabelCol: {
+    flex: 1,
+    marginRight: 16,
+  },
+  settingsIconTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  settingsSubLabel: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  settingsSeparator: {
+    height: 1,
+    width: '100%',
+  },
+  themeModeButtonsContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  themeModeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeModeBtnText: {
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
 });

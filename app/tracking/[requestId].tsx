@@ -29,6 +29,7 @@ import { getHaversineDistance, parsePostGISPoint, Coords } from '../../utils/geo
 import { useMapStatus } from '../../hooks/useMapStatus';
 import { useLiveTracking } from '../../hooks/useLiveTracking';
 import CustomLoader from '../../components/CustomLoader';
+import AvatarImage from '../../components/AvatarImage';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
@@ -41,12 +42,14 @@ interface RequestDetails {
   urgency: string;
   status: string;
   requester_id: string;
+  avatar_url?: string | null;
 }
 
 interface DonorDetails {
   id: string;
   full_name: string;
   phone_number: string;
+  avatar_url?: string | null;
 }
 
 
@@ -124,10 +127,22 @@ export default function TrackingScreen() {
 
     async function fetchData() {
       try {
-        // 1. Fetch request details
+        // 1. Fetch request details with requester profile avatar
         const { data: requestData, error: requestErr } = await supabase
           .from('blood_requests')
-          .select('id, patient_name, patient_blood_group, location_address, location_coords, urgency, status, requester_id')
+          .select(`
+            id,
+            patient_name,
+            patient_blood_group,
+            location_address,
+            location_coords,
+            urgency,
+            status,
+            requester_id,
+            profiles:requester_id (
+              avatar_url
+            )
+          `)
           .eq('id', stringRequestId)
           .single();
 
@@ -145,11 +160,12 @@ export default function TrackingScreen() {
             urgency: requestData.urgency,
             status: requestData.status,
             requester_id: requestData.requester_id,
+            avatar_url: (requestData.profiles as any)?.avatar_url,
           });
           setRequesterCoords(reqCoords);
         }
 
-        // 2. Fetch accepted donor from queues
+        // 2. Fetch accepted donor from queues with donor profile avatar
         const { data: queueData, error: queueErr } = await supabase
           .from('request_queues')
           .select(`
@@ -160,7 +176,8 @@ export default function TrackingScreen() {
             profiles:donor_id (
               id,
               full_name,
-              phone_number
+              phone_number,
+              avatar_url
             )
           `)
           .eq('request_id', stringRequestId)
@@ -176,6 +193,7 @@ export default function TrackingScreen() {
               id: donorProfile.id,
               full_name: donorProfile.full_name,
               phone_number: donorProfile.phone_number,
+              avatar_url: donorProfile.avatar_url,
             });
             setInitialDonorCoords(parsedDonorCoords);
           }
@@ -377,11 +395,11 @@ export default function TrackingScreen() {
             {donorDetails ? (
               <View style={[styles.donorFallbackInfo, { borderTopColor: theme.colors.border.subtle }]}>
                 <View style={styles.donorInfoRow}>
-                  <View style={[styles.avatarFallback, { backgroundColor: theme.colors.brand.default + '15' }]}>
-                    <Text style={[styles.avatarText, { fontFamily: theme.typography.h3.fontFamily, color: theme.colors.brand.default }]}>
-                      {donorDetails.full_name[0]}
-                    </Text>
-                  </View>
+                  <AvatarImage 
+                    uri={donorDetails.avatar_url} 
+                    size={40} 
+                    style={{ marginRight: 12 }}
+                  />
                   <View style={styles.donorMeta}>
                     <Text style={[styles.donorName, { fontFamily: theme.typography.h3.fontFamily, color: theme.colors.text.primary }]}>
                       {donorDetails.full_name}
@@ -492,7 +510,15 @@ export default function TrackingScreen() {
                 <View style={styles.requesterPinContainer}>
                   <View style={[styles.requesterPinBack, { backgroundColor: theme.colors.status.active + '20' }]} />
                   <View style={[styles.requesterPinCircle, { backgroundColor: theme.colors.status.active }]}>
-                    <Plus size={14} color="#FFF" weight="bold" />
+                    {requestDetails.avatar_url ? (
+                      <AvatarImage 
+                        uri={requestDetails.avatar_url} 
+                        size={24} 
+                        borderWidth={0} 
+                      />
+                    ) : (
+                      <Plus size={14} color="#FFF" weight="bold" />
+                    )}
                   </View>
                 </View>
               </Mapbox.MarkerView>
@@ -504,7 +530,15 @@ export default function TrackingScreen() {
                 <View style={styles.donorPinWrapper}>
                   <PulsingHalo />
                   <View style={[styles.donorPinCircle, { backgroundColor: theme.colors.brand.default }]}>
-                    <Car size={16} color="#FFF" weight="fill" />
+                    {donorDetails?.avatar_url ? (
+                      <AvatarImage 
+                        uri={donorDetails.avatar_url} 
+                        size={20} 
+                        borderWidth={0} 
+                      />
+                    ) : (
+                      <Car size={16} color="#FFF" weight="fill" />
+                    )}
                   </View>
                 </View>
               </Mapbox.MarkerView>
@@ -565,11 +599,11 @@ export default function TrackingScreen() {
             {donorDetails && (
               <View style={[styles.donorFloatingInfo, { borderTopColor: theme.colors.border.subtle }]}>
                 <View style={styles.donorInfoRow}>
-                  <View style={[styles.avatarFallback, { backgroundColor: theme.colors.brand.default + '15' }]}>
-                    <Text style={[styles.avatarText, { fontFamily: theme.typography.h3.fontFamily, color: theme.colors.brand.default }]}>
-                      {donorDetails.full_name[0]}
-                    </Text>
-                  </View>
+                  <AvatarImage 
+                    uri={donorDetails.avatar_url} 
+                    size={40} 
+                    style={{ marginRight: 12 }}
+                  />
                   <View style={styles.donorMeta}>
                     <Text style={[styles.donorName, { fontFamily: theme.typography.h3.fontFamily, color: theme.colors.text.primary }]}>
                       {donorDetails.full_name}

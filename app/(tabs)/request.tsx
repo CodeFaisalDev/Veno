@@ -5,12 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   StatusBar,
   Linking,
   ActivityIndicator,
   DeviceEventEmitter,
 } from 'react-native';
+import CustomModal from '../../components/CustomModal';
+import AvatarImage from '../../components/AvatarImage';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
@@ -30,10 +31,12 @@ import {
   Plus,
   NavigationArrow,
   XCircle,
+  SealCheck,
 } from 'phosphor-react-native';
 import { useTheme } from '../../theme';
 import CustomLoader from '../../components/CustomLoader';
 import { useMapStatus } from '../../hooks/useMapStatus';
+import AnimatedScreenWrapper from '../../components/AnimatedScreenWrapper';
 
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
 
@@ -63,6 +66,8 @@ interface QueueDonor {
     blood_group: string;
     points: number;
     location_coords?: any;
+    avatar_url?: string | null;
+    verification_badge?: boolean;
     donor_statuses?: {
       state: string;
     } | {
@@ -79,6 +84,8 @@ export default function RequestDashboardScreen() {
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [currentUserCoords, setCurrentUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
+  const [currentUserVerificationBadge, setCurrentUserVerificationBadge] = useState<boolean>(false);
 
   // Data Loading States
   const [isLoading, setIsLoading] = useState(true);
@@ -86,6 +93,27 @@ export default function RequestDashboardScreen() {
   const [queueDonors, setQueueDonors] = useState<QueueDonor[]>([]);
   const [liveDonorLocations, setLiveDonorLocations] = useState<Record<string, { latitude: number; longitude: number }>>({});
   const [isActionLoading, setIsActionLoading] = useState(false);
+
+  // Custom Modal States
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalConfig, setModalConfig] = useState<{
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+    type?: 'success' | 'warning' | 'danger' | 'info' | 'question';
+  }>({
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
+
+  const showCustomAlert = (config: typeof modalConfig) => {
+    setModalConfig(config);
+    setModalVisible(true);
+  };
 
   // Map settings
   const cameraRef = useRef<Mapbox.Camera>(null);
@@ -125,7 +153,13 @@ export default function RequestDashboardScreen() {
         setIsLoading(false);
       }
     } catch (e) {
-      Alert.alert('Permission Error', 'Failed to request location permissions.');
+      showCustomAlert({
+        title: 'Permission Error',
+        description: 'Failed to request location permissions.',
+        confirmText: 'OK',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
       setIsLoading(false);
     }
   };
@@ -157,6 +191,18 @@ export default function RequestDashboardScreen() {
       if (!user) {
         setIsLoading(false);
         return;
+      }
+
+      // Fetch current user profile details
+      const { data: userProfile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('avatar_url, verification_badge')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!profileErr && userProfile) {
+        setCurrentUserAvatarUrl(userProfile.avatar_url);
+        setCurrentUserVerificationBadge(!!userProfile.verification_badge);
       }
 
       // Check if user has an active blood request
@@ -204,6 +250,8 @@ export default function RequestDashboardScreen() {
             phone_number,
             blood_group,
             location_coords,
+            avatar_url,
+            verification_badge,
             donor_statuses:donor_statuses (
               state
             )
@@ -336,178 +384,210 @@ export default function RequestDashboardScreen() {
 
   // 4. Action Handlers (Confirm, Cancel, Complete)
   const handleConfirmDonor = async (donor: QueueDonor) => {
-    Alert.alert(
-      'Confirm Donor Match',
-      `Are you sure you want to select ${donor.profiles.full_name} to fulfill your blood request? This will decline other requests and establish live routing.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm Match',
-          onPress: async () => {
-            setIsActionLoading(true);
-            try {
-              // A. Set confirmed donor state to MATCHED
-              const { error: stateErr } = await supabase
-                .from('donor_statuses')
-                .update({ state: 'MATCHED', updated_at: new Date().toISOString() })
-                .eq('user_id', donor.donor_id);
+    showCustomAlert({
+      title: 'Confirm Donor Match',
+      description: `Are you sure you want to select ${donor.profiles.full_name} to fulfill your blood request? This will decline other requests and establish live routing.`,
+      confirmText: 'Confirm Match',
+      cancelText: 'Cancel',
+      type: 'question',
+      onConfirm: async () => {
+        setModalVisible(false);
+        setIsActionLoading(true);
+        try {
+          // A. Set confirmed donor state to MATCHED
+          const { error: stateErr } = await supabase
+            .from('donor_statuses')
+            .update({ state: 'MATCHED', updated_at: new Date().toISOString() })
+            .eq('user_id', donor.donor_id);
 
-              if (stateErr) throw stateErr;
+          if (stateErr) throw stateErr;
 
-              // B. Reject other donors in the request queue by setting their status to DECLINED
-              const { error: queueErr } = await supabase
-                .from('request_queues')
-                .update({ status: 'DECLINED' })
-                .eq('request_id', activeRequest!.id)
-                .neq('donor_id', donor.donor_id);
+          // B. Reject other donors in the request queue by setting their status to DECLINED
+          const { error: queueErr } = await supabase
+            .from('request_queues')
+            .update({ status: 'DECLINED' })
+            .eq('request_id', activeRequest!.id)
+            .neq('donor_id', donor.donor_id);
 
-              if (queueErr) throw queueErr;
+          if (queueErr) throw queueErr;
 
-              Alert.alert(
-                'Donor Confirmed',
-                `${donor.profiles.full_name} is now confirmed as your matching donor and is en-route.`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      fetchQueueData(activeRequest!.id);
-                    },
-                  },
-                ]
-              );
-            } catch (err: any) {
-              Alert.alert('Confirm Match Failed', err.message || 'An unexpected error occurred.');
-            } finally {
-              setIsActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+          showCustomAlert({
+            title: 'Donor Confirmed',
+            description: `${donor.profiles.full_name} is now confirmed as your matching donor and is en-route.`,
+            confirmText: 'OK',
+            type: 'success',
+            onConfirm: () => {
+              setModalVisible(false);
+              fetchQueueData(activeRequest!.id);
+            },
+          });
+        } catch (err: any) {
+          showCustomAlert({
+            title: 'Confirm Match Failed',
+            description: err.message || 'An unexpected error occurred.',
+            confirmText: 'OK',
+            type: 'danger',
+            onConfirm: () => setModalVisible(false),
+          });
+        } finally {
+          setIsActionLoading(false);
+        }
+      },
+      onCancel: () => setModalVisible(false)
+    });
   };
 
   const handleCancelRequest = async () => {
     if (!activeRequest) return;
 
-    Alert.alert(
-      'Cancel Blood Request',
-      'Are you sure you want to cancel this request? Any queued active matching donors will be released.',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            setIsActionLoading(true);
-            try {
-              // 1. Release matched donor if any back to ACTIVE availability
-              const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
-              if (matchedDonor) {
-                await supabase
-                  .from('donor_statuses')
-                  .update({ state: 'ACTIVE', updated_at: new Date().toISOString() })
-                  .eq('user_id', matchedDonor.donor_id);
-              }
+    showCustomAlert({
+      title: 'Cancel Blood Request',
+      description: 'Are you sure you want to cancel this request? Any queued active matching donors will be released.',
+      confirmText: 'Yes, Cancel',
+      cancelText: 'No',
+      type: 'danger',
+      onConfirm: async () => {
+        setModalVisible(false);
+        setIsActionLoading(true);
+        try {
+          // 1. Release matched donor if any back to ACTIVE availability
+          const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
+          if (matchedDonor) {
+            await supabase
+              .from('donor_statuses')
+              .update({ state: 'ACTIVE', updated_at: new Date().toISOString() })
+              .eq('user_id', matchedDonor.donor_id);
+          }
 
-              // 2. Set request status to CANCELLED
-              const { error: cancelErr } = await supabase
-                .from('blood_requests')
-                .update({ status: 'CANCELLED' })
-                .eq('id', activeRequest.id);
+          // 2. Set request status to CANCELLED
+          const { error: cancelErr } = await supabase
+            .from('blood_requests')
+            .update({ status: 'CANCELLED' })
+            .eq('id', activeRequest.id);
 
-              if (cancelErr) throw cancelErr;
+          if (cancelErr) throw cancelErr;
 
-              // 3. Clear queues
-              await supabase
-                .from('request_queues')
-                .update({ status: 'DECLINED' })
-                .eq('request_id', activeRequest.id);
+          // 3. Clear queues
+          await supabase
+            .from('request_queues')
+            .update({ status: 'DECLINED' })
+            .eq('request_id', activeRequest.id);
 
-              DeviceEventEmitter.emit('profileUpdated');
-              setActiveRequest(null);
-              setQueueDonors([]);
-              Alert.alert('Cancelled', 'Blood request cancelled successfully.');
-            } catch (e: any) {
-              Alert.alert('Error', e.message || 'Failed to cancel blood request.');
-            } finally {
-              setIsActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+          DeviceEventEmitter.emit('profileUpdated');
+          setActiveRequest(null);
+          setQueueDonors([]);
+
+          showCustomAlert({
+            title: 'Cancelled',
+            description: 'Blood request cancelled successfully.',
+            confirmText: 'OK',
+            type: 'success',
+            onConfirm: () => setModalVisible(false)
+          });
+        } catch (e: any) {
+          showCustomAlert({
+            title: 'Error',
+            description: e.message || 'Failed to cancel blood request.',
+            confirmText: 'OK',
+            type: 'danger',
+            onConfirm: () => setModalVisible(false)
+          });
+        } finally {
+          setIsActionLoading(false);
+        }
+      },
+      onCancel: () => setModalVisible(false)
+    });
   };
 
   const handleCompleteRequest = async () => {
     if (!activeRequest) return;
 
-    Alert.alert(
-      'Fulfill Request',
-      'Confirm that you have successfully received the blood donation and want to complete this request.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Fulfill & Complete',
-          onPress: async () => {
-            setIsActionLoading(true);
-            try {
-              // 1. Check if there is a matched donor to put in cooldown and earn points
-              const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
-              if (matchedDonor) {
-                const cooldownDate = new Date();
-                cooldownDate.setDate(cooldownDate.getDate() + 120); // 120 days recovery cooldown
+    showCustomAlert({
+      title: 'Fulfill Request',
+      description: 'Confirm that you have successfully received the blood donation and want to complete this request.',
+      confirmText: 'Fulfill & Complete',
+      cancelText: 'Cancel',
+      type: 'question',
+      onConfirm: async () => {
+        setModalVisible(false);
+        setIsActionLoading(true);
+        try {
+          // 1. Check if there is a matched donor to put in cooldown and earn points
+          const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
+          if (matchedDonor) {
+            const cooldownDate = new Date();
+            cooldownDate.setDate(cooldownDate.getDate() + 120); // 120 days recovery cooldown
 
-                await supabase
-                  .from('donor_statuses')
-                  .update({
-                    state: 'COOLDOWN',
-                    donation_cooldown_until: cooldownDate.toISOString(),
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('user_id', matchedDonor.donor_id);
+            await supabase
+              .from('donor_statuses')
+              .update({
+                state: 'COOLDOWN',
+                donation_cooldown_until: cooldownDate.toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', matchedDonor.donor_id);
 
-                // Add donation history entry
-                await supabase.from('donations_history').insert({
-                  donor_id: matchedDonor.donor_id,
-                  request_id: activeRequest.id,
-                  location: activeRequest.location_address,
-                  points_earned: 100, // 100 reward points
-                });
+            // Add donation history entry
+            await supabase.from('donations_history').insert({
+              donor_id: matchedDonor.donor_id,
+              request_id: activeRequest.id,
+              location: activeRequest.location_address,
+              points_earned: 100, // 100 reward points
+            });
 
-                // Increment profile points
-                const currentPoints = matchedDonor.profiles.points || 0;
-                await supabase
-                  .from('profiles')
-                  .update({ points: currentPoints + 100 })
-                  .eq('id', matchedDonor.donor_id);
-              }
+            // Increment profile points
+            const currentPoints = matchedDonor.profiles.points || 0;
+            await supabase
+              .from('profiles')
+              .update({ points: currentPoints + 100 })
+              .eq('id', matchedDonor.donor_id);
+          }
 
-              // 2. Set request status to COMPLETED
-              const { error: completeErr } = await supabase
-                .from('blood_requests')
-                .update({ status: 'COMPLETED' })
-                .eq('id', activeRequest.id);
+          // 2. Set request status to COMPLETED
+          const { error: completeErr } = await supabase
+            .from('blood_requests')
+            .update({ status: 'COMPLETED' })
+            .eq('id', activeRequest.id);
 
-              if (completeErr) throw completeErr;
+          if (completeErr) throw completeErr;
 
-              DeviceEventEmitter.emit('profileUpdated');
-              setActiveRequest(null);
-              setQueueDonors([]);
-              Alert.alert('Thank You', 'Request completed. Gratitude details sent to the donor profile.');
-            } catch (e: any) {
-              Alert.alert('Error', e.message || 'Failed to complete blood request.');
-            } finally {
-              setIsActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+          DeviceEventEmitter.emit('profileUpdated');
+          setActiveRequest(null);
+          setQueueDonors([]);
+
+          showCustomAlert({
+            title: 'Thank You',
+            description: 'Request completed. Gratitude details sent to the donor profile.',
+            confirmText: 'OK',
+            type: 'success',
+            onConfirm: () => setModalVisible(false)
+          });
+        } catch (e: any) {
+          showCustomAlert({
+            title: 'Error',
+            description: e.message || 'Failed to complete blood request.',
+            confirmText: 'OK',
+            type: 'danger',
+            onConfirm: () => setModalVisible(false)
+          });
+        } finally {
+          setIsActionLoading(false);
+        }
+      },
+      onCancel: () => setModalVisible(false)
+    });
   };
 
   const handleCall = (phoneNumber: string) => {
     Linking.openURL(`tel:${phoneNumber}`).catch(() => {
-      Alert.alert('Dialer Error', 'Cannot place a call from this device.');
+      showCustomAlert({
+        title: 'Dialer Error',
+        description: 'Cannot place a call from this device.',
+        confirmText: 'OK',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false)
+      });
     });
   };
 
@@ -518,7 +598,13 @@ export default function RequestDashboardScreen() {
     );
     Linking.openURL(`whatsapp://send?phone=${formattedPhone}&text=${text}`).catch(() => {
       Linking.openURL(`sms:${phoneNumber}?body=${text}`).catch(() => {
-        Alert.alert('Message Error', 'Unable to launch messaging applications.');
+        showCustomAlert({
+          title: 'Message Error',
+          description: 'Unable to launch messaging applications.',
+          confirmText: 'OK',
+          type: 'danger',
+          onConfirm: () => setModalVisible(false)
+        });
       });
     });
   };
@@ -583,7 +669,8 @@ export default function RequestDashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <AnimatedScreenWrapper style={styles.screen} screenIndex={1}>
+      <SafeAreaView style={styles.screen} edges={['top']}>
       <StatusBar
         barStyle={theme.dark ? "light-content" : "dark-content"}
         backgroundColor={theme.colors.bg.page}
@@ -618,13 +705,21 @@ export default function RequestDashboardScreen() {
               }
             />
 
-            {/* Requester's destination marker - Plus icon */}
+            {/* Requester's destination marker - Avatar or Plus icon */}
             {requestCoordinates && (
               <Mapbox.MarkerView id="destinationMarker" coordinate={[requestCoordinates.longitude, requestCoordinates.latitude]}>
                 <View style={styles.destinationPinWrapper}>
                   <View style={styles.destinationPinRipple} />
-                  <View style={styles.destinationPinCircle}>
-                    <Plus size={16} color="#FFF" weight="bold" />
+                  <View style={[styles.destinationPinCircle, currentUserAvatarUrl ? { padding: 0 } : null]}>
+                    {currentUserAvatarUrl ? (
+                      <AvatarImage 
+                        uri={currentUserAvatarUrl} 
+                        size={21} 
+                        borderWidth={0} 
+                      />
+                    ) : (
+                      <Plus size={16} color="#FFF" weight="bold" />
+                    )}
                   </View>
                 </View>
               </Mapbox.MarkerView>
@@ -640,7 +735,7 @@ export default function RequestDashboardScreen() {
               </Mapbox.MarkerView>
             )}
 
-            {/* Donor markers - Normal MapPin circles */}
+            {/* Donor markers - Normal MapPin circles or Avatar images */}
             {activeRequest &&
               queueDonors.map((donor) => {
                 const donorState = getDonorStateFromQueue(donor);
@@ -666,7 +761,15 @@ export default function RequestDashboardScreen() {
                       {donorState === 'ACCEPTED' && <View style={styles.yellowPinHalo} />}
                       {donorState === 'MATCHED' && <View style={styles.greenPinHalo} />}
                       <View style={[styles.donorPinCircle, { backgroundColor: pinColor }]}>
-                        <MapPin size={15} color="#FFF" weight="fill" />
+                        {donor.profiles.avatar_url ? (
+                          <AvatarImage 
+                            uri={donor.profiles.avatar_url} 
+                            size={24} 
+                            borderWidth={0} 
+                          />
+                        ) : (
+                          <MapPin size={14} color="#FFF" weight="fill" />
+                        )}
                       </View>
                     </View>
                   </Mapbox.MarkerView>
@@ -807,12 +910,20 @@ export default function RequestDashboardScreen() {
                     >
                       {/* Left Profile details */}
                       <View style={styles.donorMetaRow}>
-                        <View style={styles.donorAvatar}>
-                          <User size={18} color={theme.colors.text.secondary} />
-                        </View>
+                        <AvatarImage 
+                          uri={donor.profiles.avatar_url} 
+                          size={32} 
+                          borderWidth={donor.profiles.verification_badge ? 1.5 : 0}
+                          borderColor={donor.profiles.verification_badge ? theme.colors.status.active : undefined}
+                        />
                         <View style={{ flex: 1 }}>
                           <View style={styles.nameHeaderRow}>
-                            <Text style={styles.donorName}>{donor.profiles.full_name}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={styles.donorName}>{donor.profiles.full_name}</Text>
+                              {donor.profiles.verification_badge && (
+                                <SealCheck size={14} color={theme.colors.status.active} weight="fill" />
+                              )}
+                            </View>
                             <Text style={styles.donorBloodGroup}>{donor.profiles.blood_group}</Text>
                           </View>
                           <Text style={[
@@ -894,7 +1005,18 @@ export default function RequestDashboardScreen() {
           </View>
         )}
       </View>
-    </SafeAreaView>
+      <CustomModal
+        visible={modalVisible}
+        title={modalConfig.title}
+        description={modalConfig.description}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={modalConfig.onCancel || (() => setModalVisible(false))}
+        type={modalConfig.type || 'info'}
+      />
+      </SafeAreaView>
+    </AnimatedScreenWrapper>
   );
 }
 
@@ -1061,6 +1183,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   emptyPanelContent: {
     flex: 1,
     padding: 24,
+    paddingBottom: 110,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1134,6 +1257,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingBottom: 100,
   },
   actionLoaderText: {
     fontFamily: theme.typography.bodySm.fontFamily,
@@ -1339,6 +1463,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   panelFooter: {
     padding: 12,
+    paddingBottom: 110,
     borderTopWidth: 1,
     alignItems: 'center',
     gap: 12,
