@@ -14,6 +14,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomLoader from '../../components/CustomLoader';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+let demoInterval: any = null;
 import { 
   ShareNetwork, 
   QrCode, 
@@ -331,6 +334,187 @@ export default function ProfileScreen() {
     } catch (e) {
       console.warn('Failed to update push notification toggle state:', e);
     }
+  };
+
+  const handleStartDemo = () => {
+    showCustomAlert({
+      title: 'Start Sandbox Demo',
+      description: 'This will create a critical blood request on your profile and match it with a simulated AI donor. You will be redirected to the live tracking map to monitor the donor moving in real time.',
+      confirmText: 'Start Demo',
+      cancelText: 'Cancel',
+      type: 'question',
+      onConfirm: async () => {
+        setModalVisible(false);
+        setIsLoading(true);
+        try {
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          if (!currentUser) throw new Error('User session not found.');
+
+          // 1. Initialize second client for the AI donor
+          const aiSupabase = createClient(
+            process.env.EXPO_PUBLIC_SUPABASE_URL!,
+            process.env.EXPO_PUBLIC_SUPABASE_KEY!,
+            {
+              auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false,
+              }
+            }
+          );
+
+          // 2. Sign in the AI donor bot
+          const aiEmail = 'ai.donor@veno.test';
+          const aiPassword = 'VenoSecureTempPassword123!';
+          const { data: aiAuthData, error: aiAuthErr } = await aiSupabase.auth.signInWithPassword({
+            email: aiEmail,
+            password: aiPassword,
+          });
+
+          if (aiAuthErr) {
+            throw new Error(`AI Donor authentication failed: ${aiAuthErr.message}`);
+          }
+          const aiDonorId = aiAuthData.user.id;
+
+          // 3. Ensure the AI donor profile is active and compatible
+          const bloodGrp = profile?.blood_group || 'O+';
+          await aiSupabase
+            .from('profiles')
+            .update({
+              full_name: 'AI Donor Bot',
+              blood_group: bloodGrp,
+              location_coords: 'POINT(90.4025 23.7940)',
+            })
+            .eq('id', aiDonorId);
+
+          await aiSupabase
+            .from('donor_statuses')
+            .upsert({
+              user_id: aiDonorId,
+              state: 'ACTIVE',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+
+          // 4. Cancel previous active requests
+          await supabase
+            .from('blood_requests')
+            .update({ status: 'CANCELLED' })
+            .eq('requester_id', currentUser.id)
+            .eq('status', 'ACTIVE');
+
+          // 5. Create a new active blood request
+          const { data: requestData, error: requestErr } = await supabase
+            .from('blood_requests')
+            .insert({
+              patient_name: 'Demo Patient',
+              patient_blood_group: bloodGrp,
+              urgency: 'CRITICAL',
+              units_needed: 1,
+              location_address: 'Gulshan Central Clinic',
+              location_coords: 'POINT(90.4152 23.7925)',
+              notes: 'Demo blood request simulation',
+              status: 'ACTIVE',
+              requester_id: currentUser.id
+            })
+            .select()
+            .single();
+
+          if (requestErr) throw requestErr;
+          const requestId = requestData.id;
+
+          // 6. Join queue as ACCEPTED
+          await aiSupabase
+            .from('request_queues')
+            .upsert({
+              request_id: requestId,
+              donor_id: aiDonorId,
+              status: 'ACCEPTED',
+              location_coords: 'POINT(90.4025 23.7940)',
+              joined_at: new Date().toISOString()
+            }, { onConflict: 'request_id,donor_id' });
+
+          // Update AI Donor state to IN_QUEUE
+          await aiSupabase
+            .from('donor_statuses')
+            .update({ state: 'IN_QUEUE', updated_at: new Date().toISOString() })
+            .eq('user_id', aiDonorId);
+
+          // 7. Requester confirms the match
+          await supabase
+            .from('donor_statuses')
+            .update({ state: 'MATCHED', updated_at: new Date().toISOString() })
+            .eq('user_id', aiDonorId);
+
+          // 8. Start Presence Live Tracking simulation path
+          const demoCoordinates = [
+            { lat: 23.7940, lng: 90.4025, heading: 90, speed: 6 },
+            { lat: 23.7938, lng: 90.4040, heading: 90, speed: 7 },
+            { lat: 23.7936, lng: 90.4055, heading: 90, speed: 8 },
+            { lat: 23.7934, lng: 90.4070, heading: 95, speed: 8 },
+            { lat: 23.7932, lng: 90.4085, heading: 95, speed: 7 },
+            { lat: 23.7930, lng: 90.4100, heading: 100, speed: 6 },
+            { lat: 23.7929, lng: 90.4115, heading: 100, speed: 7 },
+            { lat: 23.7928, lng: 90.4130, heading: 100, speed: 8 },
+            { lat: 23.7927, lng: 90.4140, heading: 105, speed: 6 },
+            { lat: 23.7926, lng: 90.4148, heading: 105, speed: 4 },
+            { lat: 23.7925, lng: 90.4152, heading: 105, speed: 0 }
+          ];
+
+          const demoChannel = aiSupabase.channel(`tracking:${requestId}`);
+          
+          demoChannel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('Demo channel subscribed. Starting step loop...');
+              
+              if (demoInterval) clearInterval(demoInterval);
+              let stepIndex = 0;
+
+              demoInterval = setInterval(async () => {
+                if (stepIndex >= demoCoordinates.length) {
+                  clearInterval(demoInterval);
+                  demoInterval = null;
+                  demoChannel.untrack();
+                  demoChannel.unsubscribe();
+                  
+                  // Cleanup blood request in db
+                  await supabase
+                    .from('blood_requests')
+                    .update({ status: 'CANCELLED' })
+                    .eq('id', requestId);
+
+                  console.log('Demo completed and cleaned up.');
+                  Alert.alert('Demo Completed', 'The AI donor has arrived safely at Gulshan Central Clinic. The demo request has been closed.');
+                  return;
+                }
+
+                const step = demoCoordinates[stepIndex];
+                console.log(`[Demo API] AI donor tracking step ${stepIndex + 1}/${demoCoordinates.length}: Lat=${step.lat}, Lng=${step.lng}`);
+                
+                await demoChannel.track({
+                  lat: step.lat,
+                  lng: step.lng,
+                  heading: step.heading,
+                  speed: step.speed,
+                  timestamp: Date.now(),
+                  userId: aiDonorId
+                });
+
+                stepIndex++;
+              }, 4000); // Send coordinates update every 4 seconds
+            }
+          });
+
+          // 9. Redirect to en-route tracking screen!
+          setIsLoading(false);
+          router.push(`/tracking/${requestId}`);
+
+        } catch (e: any) {
+          setIsLoading(false);
+          Alert.alert('Demo Startup Failed', e.message || 'An error occurred during sandbox setup.');
+        }
+      },
+      onCancel: () => setModalVisible(false)
+    });
   };
 
   if (isLoading) {
@@ -683,6 +867,51 @@ export default function ProfileScreen() {
                 thumbColor={theme.colors.text.onColor}
                 ios_backgroundColor={theme.colors.border.subtle}
               />
+            </View>
+          </View>
+        </View>
+
+        {/* Developer Sandbox Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { 
+            fontFamily: theme.typography.caption.fontFamily,
+            color: theme.colors.text.secondary 
+          }]}>Developer Tools</Text>
+          
+          <View style={[styles.settingsCard, { 
+            backgroundColor: theme.colors.bg.surface,
+            borderColor: theme.colors.border.subtle,
+            borderRadius: theme.radius.lg,
+            borderWidth: theme.dark ? 0 : 1,
+            ...(!theme.dark ? theme.shadows.elevation1 : {}),
+          }]}>
+            {/* Demo Mode Row */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Trophy size={20} color={theme.colors.brand.default} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>Run Sandbox Demo</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Simulate a request and live track an AI donor</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: theme.colors.brand.default,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleStartDemo}
+              >
+                <Text style={[styles.demoBtnText, { 
+                  color: theme.colors.text.onColor,
+                  fontFamily: theme.typography.caption.fontFamily 
+                }]}>START</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1081,5 +1310,15 @@ const styles = StyleSheet.create({
   themeModeBtnText: {
     fontSize: 9,
     letterSpacing: 0.5,
+  },
+  demoBtn: {
+    paddingHorizontal: 16,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  demoBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

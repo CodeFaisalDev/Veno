@@ -16,7 +16,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
 import Mapbox from '@rnmapbox/maps';
-import { parsePostGISPoint } from '../../utils/geo';
+import { parsePostGISPoint, snapToGrid } from '../../utils/geo';
 import * as Location from 'expo-location';
 import {
   MapPin,
@@ -341,8 +341,13 @@ export default function RequestDashboardScreen() {
           if (donorState === 'ACCEPTED' || donorState === 'MATCHED') {
             const liveLocation = liveDonorLocations[donor.donor_id];
             const profileLocation = parsePostGISPoint(donor.profiles.location_coords);
-            const activeCoords = liveLocation || profileLocation;
-            if (activeCoords) points.push(activeCoords);
+            let activeCoords = liveLocation || profileLocation;
+            if (activeCoords) {
+              if (donorState !== 'MATCHED') {
+                activeCoords = snapToGrid(activeCoords.latitude, activeCoords.longitude);
+              }
+              points.push(activeCoords);
+            }
           }
         });
 
@@ -741,9 +746,14 @@ export default function RequestDashboardScreen() {
                 const donorState = getDonorStateFromQueue(donor);
                 const liveLocation = liveDonorLocations[donor.donor_id];
                 const profileLocation = parsePostGISPoint(donor.profiles.location_coords);
-                const markerCoords = liveLocation || profileLocation;
+                let markerCoords = liveLocation || profileLocation;
 
                 if (!markerCoords) return null;
+
+                // Fuzz location to 500m grid for privacy if the donor is not MATCHED yet
+                if (donorState !== 'MATCHED') {
+                  markerCoords = snapToGrid(markerCoords.latitude, markerCoords.longitude);
+                }
 
                 // Color mappings based on queue status states
                 let pinColor = '#8C9099'; // gray pending/inactive

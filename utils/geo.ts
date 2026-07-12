@@ -43,3 +43,19 @@ export function parsePostGISPoint(coords: any): Coords | null {
   }
   return null;
 }
+
+/**
+ * Snaps/fuzzes coordinates to a grid (default 500 meters) to protect donor privacy prior to selection
+ */
+export function snapToGrid(latitude: number, longitude: number, gridSizeMeters = 500): Coords {
+  const latDegreeMeters = 111111; // Approx meters per degree latitude
+  const latGridSizeDegrees = gridSizeMeters / latDegreeMeters;
+  const snappedLat = Math.round(latitude / latGridSizeDegrees) * latGridSizeDegrees;
+
+  const lonDegreeMeters = 111111 * Math.cos(latitude * (Math.PI / 180));
+  const lonGridSizeDegrees = gridSizeMeters / lonDegreeMeters;
+  const snappedLon = Math.round(longitude / lonGridSizeDegrees) * lonGridSizeDegrees;
+
+  return { latitude: snappedLat, longitude: snappedLon };
+}
+
