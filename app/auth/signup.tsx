@@ -110,7 +110,11 @@ export default function SignUpScreen() {
             router.push({ pathname: '/auth/otp', params: { email: email.trim(), type: 'signup', bypass: 'true' } });
             return;
           }
-          if (errMsg.includes('already registered') || errMsg.includes('already been registered')) {
+          if (
+            errMsg.includes('already registered') || 
+            errMsg.includes('already been registered') || 
+            errMsg.includes('already exists')
+          ) {
             Alert.alert('Account Exists', 'This email is already registered. Please sign in instead.');
             router.push('/auth/login');
             return;
@@ -145,7 +149,11 @@ export default function SignUpScreen() {
 
       if (error) {
         const errMsg = error.message.toLowerCase();
-        if (errMsg.includes('already registered') || errMsg.includes('already been registered')) {
+        if (
+          errMsg.includes('already registered') || 
+          errMsg.includes('already been registered') || 
+          errMsg.includes('already exists')
+        ) {
           showError('Account Exists', 'This email is already registered. Please sign in instead.');
           return;
         }

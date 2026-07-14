@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
+import { View, StyleSheet, DeviceEventEmitter, Alert } from 'react-native';
 import { Stack, useRouter, useSegments, Redirect } from 'expo-router';
 import { supabase } from '../utils/supabase';
 import '../utils/tracking';
 import { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DeveloperDemoOverlay from '../components/DeveloperDemoOverlay';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { ThemeProvider, useTheme } from '../theme';
 import { useFonts } from 'expo-font';
@@ -56,6 +57,14 @@ export default function RootLayout() {
         .single();
 
       if (error || !data) {
+        console.error('[validateSessionAndGetProfile] Profile fetch failed:', error, 'status:', status);
+        
+        // Alert the developer to diagnose why the session/profile check is rejecting the user
+        Alert.alert(
+          'Profile Synchronization Failed',
+          `Could not load user profile.\n\nError: ${error?.message || 'No data found'}\nStatus Code: ${status}\nUser ID: ${userId}`
+        );
+
         // If session is invalid (e.g. unauthorized), sign out
         if (status === 401 || status === 403) {
           await supabase.auth.signOut();
@@ -235,6 +244,7 @@ export default function RootLayout() {
         <Stack.Screen name="tracking/[requestId]" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
       </Stack>
+      <DeveloperDemoOverlay />
     </ThemeProvider>
   );
 }

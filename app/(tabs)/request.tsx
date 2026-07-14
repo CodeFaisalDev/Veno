@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   DeviceEventEmitter,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../../components/CustomModal';
 import AvatarImage from '../../components/AvatarImage';
 import { useRouter, usePathname } from 'expo-router';
@@ -93,6 +94,7 @@ export default function RequestDashboardScreen() {
   const [queueDonors, setQueueDonors] = useState<QueueDonor[]>([]);
   const [liveDonorLocations, setLiveDonorLocations] = useState<Record<string, { latitude: number; longitude: number }>>({});
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [activeDemoDonors, setActiveDemoDonors] = useState<any[]>([]);
 
   // Custom Modal States
   const [modalVisible, setModalVisible] = useState(false);
@@ -122,6 +124,56 @@ export default function RequestDashboardScreen() {
   // 1. Initial Permission Check
   useEffect(() => {
     checkPermissions();
+  }, []);
+
+  // Demo Mode Active Donors Check
+  useEffect(() => {
+    const checkDemoMode = async () => {
+      try {
+        const active = await AsyncStorage.getItem('is_demo_active');
+        if (active === 'true') {
+          // Fetch the 3 bot profiles
+          const { data: bots, error } = await supabase
+            .from('public_profiles')
+            .select('id, display_name, blood_group, avatar_url, verification_badge')
+            .in('id', [
+              '0145771d-5359-4efe-b6d0-4db7f44db573',
+              'fbf45d0b-c7e9-4992-b3ea-3ab2a1757377',
+              'b7bd584f-2ea4-4a5c-b1a8-f911fa303631'
+            ]);
+          if (!error && bots) {
+            const botsWithCoords = bots.map((bot) => {
+              let lat = 23.7940, lng = 90.4025;
+              if (bot.id === 'fbf45d0b-c7e9-4992-b3ea-3ab2a1757377') {
+                lat = 23.7930; lng = 90.4060;
+              } else if (bot.id === 'b7bd584f-2ea4-4a5c-b1a8-f911fa303631') {
+                lat = 23.7915; lng = 90.4120;
+              }
+              return {
+                ...bot,
+                latitude: lat,
+                longitude: lng
+              };
+            });
+            setActiveDemoDonors(botsWithCoords);
+          }
+        } else {
+          setActiveDemoDonors([]);
+        }
+      } catch (e) {
+        console.warn('Error reading demo state in Request dashboard:', e);
+      }
+    };
+
+    checkDemoMode();
+    
+    // Listen for demo changes to update dashboard indicators
+    const listener = DeviceEventEmitter.addListener('demoStateChanged', () => {
+      checkDemoMode();
+      fetchActiveRequestAndQueue();
+    });
+    
+    return () => listener.remove();
   }, []);
 
   const checkPermissions = async () => {
@@ -774,6 +826,36 @@ export default function RequestDashboardScreen() {
                         {donor.profiles.avatar_url ? (
                           <AvatarImage 
                             uri={donor.profiles.avatar_url} 
+                            size={24} 
+                            borderWidth={0} 
+                          />
+                        ) : (
+                          <MapPin size={14} color="#FFF" weight="fill" />
+                        )}
+                      </View>
+                    </View>
+                  </Mapbox.MarkerView>
+                );
+              })}
+
+            {/* Available nearby donors (Grayed out) */}
+            {activeRequest && activeDemoDonors
+              .filter(bot => !queueDonors.some(qd => qd.donor_id === bot.id))
+              .map((bot) => {
+                // Snapped to 500m grid for privacy prior to matching/joining queue!
+                const snapped = snapToGrid(bot.latitude, bot.longitude);
+                return (
+                  <Mapbox.MarkerView
+                    key={`bot-gray-${bot.id}`}
+                    id={`bot-gray-${bot.id}`}
+                    coordinate={[snapped.longitude, snapped.latitude]}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <View style={styles.donorPinContainer}>
+                      <View style={[styles.donorPinCircle, { backgroundColor: '#8C9099' }]}>
+                        {bot.avatar_url ? (
+                          <AvatarImage 
+                            uri={bot.avatar_url} 
                             size={24} 
                             borderWidth={0} 
                           />

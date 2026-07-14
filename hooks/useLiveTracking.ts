@@ -52,8 +52,9 @@ export function useLiveTracking(requestId: string | null) {
         }
 
         const startTime = Date.now();
-        // Expect updates every 15 seconds
-        const duration = 15000; 
+        // Self-adapting interpolation duration based on message frequency
+        const timeDiff = next.timestamp && prev.timestamp ? next.timestamp - prev.timestamp : 0;
+        const duration = timeDiff > 1000 && timeDiff < 30000 ? timeDiff : 15000; 
 
         const animate = () => {
           if (!prevRef.current || !nextRef.current) return;
