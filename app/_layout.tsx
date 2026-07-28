@@ -58,12 +58,6 @@ export default function RootLayout() {
 
       if (error || !data) {
         console.error('[validateSessionAndGetProfile] Profile fetch failed:', error, 'status:', status);
-        
-        // Alert the developer to diagnose why the session/profile check is rejecting the user
-        Alert.alert(
-          'Profile Synchronization Failed',
-          `Could not load user profile.\n\nError: ${error?.message || 'No data found'}\nStatus Code: ${status}\nUser ID: ${userId}`
-        );
 
         // If session is invalid (e.g. unauthorized), sign out
         if (status === 401 || status === 403) {
@@ -171,60 +165,48 @@ export default function RootLayout() {
     }
   }, [isProfileComplete, hasSeenIntro, hasSeenGuide, fontsLoaded]);
 
+  // Route protection & redirects managed safely in useEffect to prevent infinite render loops
+  useEffect(() => {
+    if (isLoading || !fontsLoaded) return;
+
+    const segmentsList = (segments || []) as string[];
+    const rootSegment = segmentsList[0];
+    const subSegment = segmentsList[1];
+
+    if (!session) {
+      const isAllowedAuthScreen =
+        (rootSegment === 'onboarding' && subSegment === 'intro') ||
+        (rootSegment === 'auth' && (subSegment === 'login' || subSegment === 'signup' || subSegment === 'otp'));
+
+      if (!isAllowedAuthScreen) {
+        router.replace('/onboarding/intro');
+      }
+    } else {
+      const isResettingPassword = rootSegment === 'auth' && subSegment === 'reset-password';
+      if (!isResettingPassword) {
+        if (!isProfileComplete) {
+          if (rootSegment !== 'onboarding' || subSegment !== 'profile-setup') {
+            router.replace('/onboarding/profile-setup');
+          }
+        } else if (!hasSeenGuide) {
+          if (rootSegment !== 'onboarding' || subSegment !== 'how-to-use') {
+            router.replace('/onboarding/how-to-use');
+          }
+        } else {
+          if (rootSegment === 'auth' || rootSegment === 'onboarding' || segmentsList.length === 0) {
+            router.replace('/(tabs)');
+          }
+        }
+      }
+    }
+  }, [isLoading, fontsLoaded, session, isProfileComplete, hasSeenGuide, segments]);
+
   if (isLoading || !fontsLoaded) {
     return (
       <ThemeProvider>
         <RootBootLoader />
       </ThemeProvider>
     );
-  }
-
-  const segmentsList = segments as any;
-  const rootSegment = segmentsList[0];
-  const subSegment = segmentsList[1];
-
-  // Synchronous route protection/redirections to prevent dashboard flash!
-  if (!session) {
-    const isAllowedAuthScreen = 
-      (rootSegment === 'onboarding' && subSegment === 'intro') ||
-      (rootSegment === 'auth' && (subSegment === 'login' || subSegment === 'signup' || subSegment === 'otp'));
-    
-    if (!isAllowedAuthScreen) {
-      return (
-        <ThemeProvider>
-          <Redirect href="/onboarding/intro" />
-        </ThemeProvider>
-      );
-    }
-  } else {
-    const isResettingPassword = rootSegment === 'auth' && subSegment === 'reset-password';
-    if (!isResettingPassword) {
-      if (!isProfileComplete) {
-        if (rootSegment !== 'onboarding' || subSegment !== 'profile-setup') {
-          return (
-            <ThemeProvider>
-              <Redirect href="/onboarding/profile-setup" />
-            </ThemeProvider>
-          );
-        }
-      } else if (!hasSeenGuide) {
-        if (rootSegment !== 'onboarding' || subSegment !== 'how-to-use') {
-          return (
-            <ThemeProvider>
-              <Redirect href="/onboarding/how-to-use" />
-            </ThemeProvider>
-          );
-        }
-      } else {
-        if (rootSegment === 'auth' || rootSegment === 'onboarding' || segmentsList.length === 0) {
-          return (
-            <ThemeProvider>
-              <Redirect href="/(tabs)" />
-            </ThemeProvider>
-          );
-        }
-      }
-    }
   }
 
   return (

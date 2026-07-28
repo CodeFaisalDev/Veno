@@ -269,9 +269,9 @@ export default function DashboardScreen() {
       try {
         const { status } = await Location.getForegroundPermissionsAsync();
         if (status === 'granted') {
-          let location = await Location.getLastKnownPositionAsync({});
+          let location: Location.LocationObject | null = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           if (!location) {
-            location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            location = await Location.getLastKnownPositionAsync({});
           }
           if (location) {
             const { latitude, longitude } = location.coords;
@@ -401,7 +401,7 @@ export default function DashboardScreen() {
           state: 'IN_QUEUE',
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', profile!.id);
+        .eq('user_id', profile?.id);
 
       if (stateErr) throw stateErr;
 

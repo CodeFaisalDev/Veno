@@ -25,14 +25,21 @@ import {
   Plus,
 } from 'phosphor-react-native';
 import Mapbox from '@rnmapbox/maps';
-import { getHaversineDistance, parsePostGISPoint, Coords } from '../../utils/geo';
+import { getHaversineDistance, parsePostGISPoint, fetchRouteDirections, Coords } from '../../utils/geo';
 import { useMapStatus } from '../../hooks/useMapStatus';
 import { useLiveTracking } from '../../hooks/useLiveTracking';
 import CustomLoader from '../../components/CustomLoader';
 import AvatarImage from '../../components/AvatarImage';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  try {
+    Mapbox.setAccessToken(MAPBOX_TOKEN);
+  } catch (e) {
+    console.warn('Failed to set Mapbox access token:', e);
+  }
+}
 
 interface RequestDetails {
   id: string;
@@ -220,6 +227,36 @@ export default function TrackingScreen() {
   const activeDonorCoords: Coords | null = interpolatedCoords
     ? { latitude: interpolatedCoords.latitude, longitude: interpolatedCoords.longitude }
     : initialDonorCoords;
+
+  // Road directions polyline state
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
+
+  // Fetch turn-by-turn road route directions from Mapbox
+  useEffect(() => {
+    if (!requesterCoords || !activeDonorCoords) {
+      setRouteCoordinates(null);
+      return;
+    }
+
+    let active = true;
+    const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+
+    fetchRouteDirections(activeDonorCoords, requesterCoords, mapboxToken).then((coords) => {
+      if (active) {
+        setRouteCoordinates(coords);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    requesterCoords?.latitude,
+    requesterCoords?.longitude,
+    // Re-fetch directions when donor position shifts (~50 meters)
+    Math.round((activeDonorCoords?.latitude || 0) * 2000),
+    Math.round((activeDonorCoords?.longitude || 0) * 2000),
+  ]);
 
   // Calculate distance & ETA metrics
   let distanceText = 'Calculating...';
@@ -496,6 +533,7 @@ export default function TrackingScreen() {
         <View style={styles.mapContainer}>
           <Mapbox.MapView
             style={StyleSheet.absoluteFill}
+            styleURL={Mapbox.StyleURL.Street}
             logoEnabled={false}
             attributionEnabled={false}
           >
@@ -544,7 +582,7 @@ export default function TrackingScreen() {
               </Mapbox.MarkerView>
             )}
 
-            {/* Line connecting donor and requester */}
+            {/* Turn-by-turn road route polyline connecting donor and requester */}
             {requesterCoords && activeDonorCoords && (
               <Mapbox.ShapeSource
                 id="routeSource"
@@ -553,20 +591,33 @@ export default function TrackingScreen() {
                   properties: {},
                   geometry: {
                     type: 'LineString',
-                    coordinates: [
+                    coordinates: routeCoordinates && routeCoordinates.length > 0 ? routeCoordinates : [
                       [activeDonorCoords.longitude, activeDonorCoords.latitude],
                       [requesterCoords.longitude, requesterCoords.latitude],
                     ],
                   },
                 }}
               >
+                {/* Background route line casing for contrast */}
                 <Mapbox.LineLayer
-                  id="routeLine"
+                  id="routeLineCasing"
                   style={{
                     lineColor: theme.colors.brand.default,
-                    lineWidth: 3.5,
-                    lineDasharray: [2, 2],
-                    lineOpacity: 0.75,
+                    lineWidth: 7,
+                    lineOpacity: 0.35,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+                {/* Foreground main route line */}
+                <Mapbox.LineLayer
+                  id="routeLineMain"
+                  style={{
+                    lineColor: theme.colors.brand.default,
+                    lineWidth: 4,
+                    lineOpacity: 0.95,
+                    lineCap: 'round',
+                    lineJoin: 'round',
                   }}
                 />
               </Mapbox.ShapeSource>

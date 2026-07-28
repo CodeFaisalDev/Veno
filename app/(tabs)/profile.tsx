@@ -31,6 +31,13 @@ import {
   Moon,
   Sun,
   Bell,
+  Plus,
+  Users,
+  Car,
+  ShieldCheck,
+  ArrowClockwise,
+  Play,
+  Lightning,
 } from 'phosphor-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../theme';
@@ -39,7 +46,15 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import AvatarImage from '../../components/AvatarImage';
 import CustomModal from '../../components/CustomModal';
-import { registerForPushNotificationsAsync } from '../../utils/notifications';
+import { registerForPushNotificationsAsync, triggerTestNotification } from '../../utils/notifications';
+import {
+  createBotRequest,
+  spawnAndMatchBotDonors,
+  startBotLiveGpsStream,
+  stopBotLiveGpsStream,
+  resetAllBotData,
+  toggleUserVerification,
+} from '../../utils/botSimulator';
 import AnimatedPressable from '../../components/AnimatedPressable';
 import AnimatedScreenWrapper from '../../components/AnimatedScreenWrapper';
 
@@ -361,6 +376,175 @@ export default function ProfileScreen() {
       },
       onCancel: () => setModalVisible(false)
     });
+  };
+
+  // Bot Testing Handlers
+  const [botActionLoading, setBotActionLoading] = useState<string | null>(null);
+
+  const handleBotCreateRequest = async () => {
+    setBotActionLoading('request');
+    try {
+      const reqId = await createBotRequest();
+      showCustomAlert({
+        title: 'Emergency Request Created',
+        description: `Simulated O+ Emergency Request created (ID: ${reqId.slice(0, 8)}...). Navigating to Live Queue...`,
+        type: 'success',
+        onConfirm: () => {
+          setModalVisible(false);
+          router.push('/request');
+        },
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'Bot Request Error',
+        description: err?.message || 'Failed to create simulated request.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
+  };
+
+  const handleBotSpawnAndMatch = async () => {
+    setBotActionLoading('match');
+    try {
+      let reqId = await AsyncStorage.getItem('active_demo_request_id');
+      if (!reqId) {
+        reqId = await createBotRequest();
+      }
+      await spawnAndMatchBotDonors(reqId);
+      showCustomAlert({
+        title: 'Donors Matched',
+        description: '2 AI Donors (AI Donor Bot 1 & 2) matched and accepted the request queue.',
+        type: 'success',
+        onConfirm: () => {
+          setModalVisible(false);
+          router.push('/request');
+        },
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'Bot Match Error',
+        description: err?.message || 'Failed to match bot donors.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
+  };
+
+  const handleBotStartLiveGps = async () => {
+    setBotActionLoading('gps');
+    try {
+      let reqId = await AsyncStorage.getItem('active_demo_request_id');
+      if (!reqId) {
+        reqId = await createBotRequest();
+        await spawnAndMatchBotDonors(reqId);
+      }
+      await startBotLiveGpsStream(reqId);
+      showCustomAlert({
+        title: 'Live GPS Stream Started',
+        description: 'AI Donor Bot 1 is now broadcasting live GPS route coordinates via Supabase Presence.',
+        type: 'success',
+        onConfirm: () => {
+          setModalVisible(false);
+          router.push(`/tracking/${reqId}`);
+        },
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'GPS Stream Error',
+        description: err?.message || 'Failed to start GPS stream.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
+  };
+
+  const handleBotTestPushNotification = async () => {
+    setBotActionLoading('notif');
+    try {
+      const success = await triggerTestNotification(
+        '🚨 CRITICAL: O+ Emergency Request',
+        'Gulshan Central Clinic needs 1 unit O+ blood immediately. Tap to respond!'
+      );
+      showCustomAlert({
+        title: success ? 'Notification Scheduled' : 'Notification Triggered',
+        description: 'Local test emergency push notification alert triggered successfully on this device.',
+        type: 'info',
+        onConfirm: () => setModalVisible(false),
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'Notification Error',
+        description: err?.message || 'Failed to trigger test notification.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
+  };
+
+  const handleBotToggleVerification = async () => {
+    if (!profile) return;
+    setBotActionLoading('verify');
+    try {
+      const newBadge = await toggleUserVerification(profile.id, profile.verification_badge);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              verification_badge: newBadge,
+              points: Math.max(0, prev.points + (newBadge ? 100 : -100)),
+            }
+          : null
+      );
+      showCustomAlert({
+        title: newBadge ? 'Badge Granted' : 'Badge Reset',
+        description: newBadge
+          ? 'Identity status set to VERIFIED! +100 Points granted.'
+          : 'Identity status set to NOT VERIFIED.',
+        type: newBadge ? 'success' : 'warning',
+        onConfirm: () => setModalVisible(false),
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'Verification Toggle Error',
+        description: err?.message || 'Failed to toggle verification state.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
+  };
+
+  const handleBotResetAll = async () => {
+    setBotActionLoading('reset');
+    try {
+      const activeReqId = await AsyncStorage.getItem('active_demo_request_id');
+      await resetAllBotData(activeReqId);
+      showCustomAlert({
+        title: 'Environment Cleaned',
+        description: 'All bot test data, active requests, and presence channels have been reset.',
+        type: 'success',
+        onConfirm: () => setModalVisible(false),
+      });
+    } catch (err: any) {
+      showCustomAlert({
+        title: 'Reset Error',
+        description: err?.message || 'Failed to reset bot data.',
+        type: 'danger',
+        onConfirm: () => setModalVisible(false),
+      });
+    } finally {
+      setBotActionLoading(null);
+    }
   };
 
   if (isLoading) {
@@ -717,12 +901,12 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Developer Sandbox Section */}
+        {/* Developer Sandbox & Bot Testing Suite */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { 
             fontFamily: theme.typography.caption.fontFamily,
             color: theme.colors.text.secondary 
-          }]}>Developer Tools</Text>
+          }]}>BOT AUTOMATION & FUNCTIONAL TESTING</Text>
           
           <View style={[styles.settingsCard, { 
             backgroundColor: theme.colors.bg.surface,
@@ -731,20 +915,236 @@ export default function ProfileScreen() {
             borderWidth: theme.dark ? 0 : 1,
             ...(!theme.dark ? theme.shadows.elevation1 : {}),
           }]}>
-            {/* Demo Mode Row */}
+            {/* 1. Emergency Blood Request Bot */}
             <View style={styles.settingsRow}>
               <View style={styles.settingsLabelCol}>
                 <View style={styles.settingsIconTextRow}>
-                  <Trophy size={20} color={theme.colors.brand.default} />
+                  <Plus size={20} color={theme.colors.brand.default} />
                   <Text style={[styles.settingsLabel, { 
                     fontFamily: theme.typography.body.fontFamily,
                     color: theme.colors.text.primary 
-                  }]}>Run Sandbox Demo</Text>
+                  }]}>1. Emergency Request Bot</Text>
                 </View>
                 <Text style={[styles.settingsSubLabel, { 
                   fontFamily: theme.typography.bodySm.fontFamily,
                   color: theme.colors.text.secondary 
-                }]}>Simulate a request and live track an AI donor</Text>
+                }]}>Create active O+ request beacon</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: theme.colors.brand.default,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotCreateRequest}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'request' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>CREATE</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 2. Donor Queue Match Bot */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Users size={20} color={theme.colors.status.active} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>2. AI Donor Match Bot</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Spawn 2 AI donors & accept queue</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: theme.colors.status.active,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotSpawnAndMatch}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'match' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>MATCH</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 3. Live GPS Navigation Stream Bot */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Car size={20} color={theme.colors.brand.default} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>3. Live GPS Transit Bot</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Stream real-time route on map</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: theme.colors.brand.default,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotStartLiveGps}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'gps' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>STREAM</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 4. Push Notification Alert Bot */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Bell size={20} color="#F59E0B" />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>4. Push Notification Bot</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Trigger instant emergency alert</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: '#F59E0B',
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotTestPushNotification}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'notif' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>ALERT</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 5. Identity Verification Badge Bot */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <ShieldCheck size={20} color={theme.colors.status.active} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>5. Identity Verification Bot</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Toggle verified badge & points</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: profile?.verification_badge ? theme.colors.status.critical : theme.colors.status.active,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotToggleVerification}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'verify' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>{profile?.verification_badge ? 'REVOKE' : 'VERIFY'}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 6. Clean State & Bot Reset */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <ArrowClockwise size={20} color={theme.colors.status.critical} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>6. Clean Environment</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Cancel test requests & clean state</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.demoBtn, { 
+                  backgroundColor: theme.colors.status.critical,
+                  borderRadius: theme.radius.md,
+                }]}
+                onPress={handleBotResetAll}
+                disabled={botActionLoading !== null}
+              >
+                {botActionLoading === 'reset' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.demoBtnText, { 
+                    color: theme.colors.text.onColor,
+                    fontFamily: theme.typography.caption.fontFamily 
+                  }]}>RESET</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.settingsSeparator, { backgroundColor: theme.colors.border.subtle }]} />
+
+            {/* 7. Full Interactive Guided Demo Overlay */}
+            <View style={styles.settingsRow}>
+              <View style={styles.settingsLabelCol}>
+                <View style={styles.settingsIconTextRow}>
+                  <Play size={20} color={theme.colors.brand.default} />
+                  <Text style={[styles.settingsLabel, { 
+                    fontFamily: theme.typography.body.fontFamily,
+                    color: theme.colors.text.primary 
+                  }]}>7. Guided Demo Walkthrough</Text>
+                </View>
+                <Text style={[styles.settingsSubLabel, { 
+                  fontFamily: theme.typography.bodySm.fontFamily,
+                  color: theme.colors.text.secondary 
+                }]}>Step-by-step interactive sandbox</Text>
               </View>
               <TouchableOpacity
                 style={[styles.demoBtn, { 
@@ -756,9 +1156,10 @@ export default function ProfileScreen() {
                 <Text style={[styles.demoBtnText, { 
                   color: theme.colors.text.onColor,
                   fontFamily: theme.typography.caption.fontFamily 
-                }]}>START</Text>
+                }]}>WALKTHROUGH</Text>
               </TouchableOpacity>
             </View>
+
           </View>
         </View>
 

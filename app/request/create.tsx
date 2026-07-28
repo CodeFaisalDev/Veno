@@ -42,7 +42,14 @@ import CustomLoader from '../../components/CustomLoader';
 import StaticMapFallback from '../../components/StaticMapFallback';
 import { useMapStatus } from '../../hooks/useMapStatus';
 
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  try {
+    Mapbox.setAccessToken(MAPBOX_TOKEN);
+  } catch (e) {
+    console.warn('Failed to set Mapbox access token:', e);
+  }
+}
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -208,9 +215,9 @@ export default function CreateRequestScreen() {
         return;
       }
 
-      let location = await Location.getLastKnownPositionAsync({});
+      let location: Location.LocationObject | null = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       if (!location) {
-        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        location = await Location.getLastKnownPositionAsync({});
       }
 
       if (location) {
@@ -234,8 +241,18 @@ export default function CreateRequestScreen() {
   };
 
   const handleCameraChange = (event: any) => {
-    const [lng, lat] = event.properties.center;
-    tempCoordsRef.current = { latitude: lat, longitude: lng };
+    try {
+      const center = event?.properties?.center || event?.geometry?.coordinates;
+      if (Array.isArray(center) && center.length >= 2) {
+        const lng = parseFloat(center[0]);
+        const lat = parseFloat(center[1]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          tempCoordsRef.current = { latitude: lat, longitude: lng };
+        }
+      }
+    } catch (e) {
+      console.warn('Error handling camera change:', e);
+    }
   };
 
   const handleConfirmPinLocation = async () => {

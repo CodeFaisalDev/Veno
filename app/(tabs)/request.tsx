@@ -9,6 +9,8 @@ import {
   Linking,
   ActivityIndicator,
   DeviceEventEmitter,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../../components/CustomModal';
@@ -17,7 +19,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
 import Mapbox from '@rnmapbox/maps';
-import { parsePostGISPoint, snapToGrid } from '../../utils/geo';
+import { parsePostGISPoint, snapToGrid, fetchRouteDirections, createGeoJSONCircle } from '../../utils/geo';
 import * as Location from 'expo-location';
 import {
   MapPin,
@@ -33,13 +35,23 @@ import {
   NavigationArrow,
   XCircle,
   SealCheck,
+  Target,
+  CaretUp,
+  CaretDown,
 } from 'phosphor-react-native';
 import { useTheme } from '../../theme';
 import CustomLoader from '../../components/CustomLoader';
 import { useMapStatus } from '../../hooks/useMapStatus';
 import AnimatedScreenWrapper from '../../components/AnimatedScreenWrapper';
 
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  try {
+    Mapbox.setAccessToken(MAPBOX_TOKEN);
+  } catch (e) {
+    console.warn('Failed to set Mapbox access token:', e);
+  }
+}
 
 interface RequestDetails {
   id: string;
@@ -95,6 +107,112 @@ export default function RequestDashboardScreen() {
   const [liveDonorLocations, setLiveDonorLocations] = useState<Record<string, { latitude: number; longitude: number }>>({});
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [activeDemoDonors, setActiveDemoDonors] = useState<any[]>([]);
+  const [matchedRoutePolyline, setMatchedRoutePolyline] = useState<[number, number][] | null>(null);
+  const [showOnlyMatchedDonor, setShowOnlyMatchedDonor] = useState(false);
+  const [animatedDonorLocations, setAnimatedDonorLocations] = useState<Record<string, { latitude: number; longitude: number }>>({});
+
+  // Slide-up bottom sheet state & spring animation
+  const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+  const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  const sheetAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(sheetAnim, {
+      toValue: isSheetExpanded ? 1 : 0,
+      useNativeDriver: false,
+      friction: 12,
+      tension: 50,
+    }).start();
+  }, [isSheetExpanded]);
+
+  // Auto-expand sheet when donors arrive in queue
+  useEffect(() => {
+    if (queueDonors.length > 0) {
+      setIsSheetExpanded(true);
+    }
+  }, [queueDonors.length]);
+
+  const animFrameRef = useRef<Record<string, number>>({});
+  const currentCoordsRef = useRef<Record<string, { latitude: number; longitude: number }>>({});
+
+  const animateToLocation = (userId: string, targetLat: number, targetLng: number) => {
+    const start = currentCoordsRef.current[userId] || { latitude: targetLat, longitude: targetLng };
+    const startTime = Date.now();
+    const duration = 2200; // Smooth 2.2s glide across 2.5s interval steps
+    let lastRenderTime = 0;
+
+    if (animFrameRef.current[userId]) {
+      cancelAnimationFrame(animFrameRef.current[userId]);
+    }
+
+    const animateStep = () => {
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      // Smooth easeOutQuad easing
+      const ease = 1 - (1 - progress) * (1 - progress);
+
+      const curLat = start.latitude + (targetLat - start.latitude) * ease;
+      const curLng = start.longitude + (targetLng - start.longitude) * ease;
+
+      const newCoords = { latitude: curLat, longitude: curLng };
+      currentCoordsRef.current[userId] = newCoords;
+
+      // Throttle React state updates to ~66ms (15 FPS) to prevent native Android MarkerView layout collapse/disappearance
+      if (now - lastRenderTime > 66 || progress === 1) {
+        lastRenderTime = now;
+        setAnimatedDonorLocations((prev) => ({ ...prev, [userId]: newCoords }));
+      }
+
+      if (progress < 1) {
+        animFrameRef.current[userId] = requestAnimationFrame(animateStep);
+      }
+    };
+
+    animFrameRef.current[userId] = requestAnimationFrame(animateStep);
+  };
+
+  // Blinking halo animation for matched en-route donor
+  const blinkAnim = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blinkAnim, {
+          toValue: 0.3,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  // Amber halo animation for standby accepted donors
+  const amberBlinkAnim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(amberBlinkAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(amberBlinkAnim, {
+          toValue: 0.4,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
   // Custom Modal States
   const [modalVisible, setModalVisible] = useState(false);
@@ -126,54 +244,89 @@ export default function RequestDashboardScreen() {
     checkPermissions();
   }, []);
 
-  // Demo Mode Active Donors Check
+  // Active Donors Check (Queries active donor profiles dynamically & reads demo_spawned_bots fallback)
   useEffect(() => {
-    const checkDemoMode = async () => {
+    const fetchActiveDonors = async () => {
       try {
         const active = await AsyncStorage.getItem('is_demo_active');
         if (active === 'true') {
-          // Fetch the 3 bot profiles
-          const { data: bots, error } = await supabase
-            .from('public_profiles')
-            .select('id, display_name, blood_group, avatar_url, verification_badge')
-            .in('id', [
-              '0145771d-5359-4efe-b6d0-4db7f44db573',
-              'fbf45d0b-c7e9-4992-b3ea-3ab2a1757377',
-              'b7bd584f-2ea4-4a5c-b1a8-f911fa303631'
-            ]);
-          if (!error && bots) {
-            const botsWithCoords = bots.map((bot) => {
-              let lat = 23.7940, lng = 90.4025;
-              if (bot.id === 'fbf45d0b-c7e9-4992-b3ea-3ab2a1757377') {
-                lat = 23.7930; lng = 90.4060;
-              } else if (bot.id === 'b7bd584f-2ea4-4a5c-b1a8-f911fa303631') {
-                lat = 23.7915; lng = 90.4120;
-              }
-              return {
-                ...bot,
-                latitude: lat,
-                longitude: lng
-              };
-            });
-            setActiveDemoDonors(botsWithCoords);
+          const localBotsJson = await AsyncStorage.getItem('demo_spawned_bots');
+          const localBots = localBotsJson ? JSON.parse(localBotsJson) : [];
+          console.log('[VENO] fetchActiveDonors: demo active, localBots count:', localBots.length);
+
+          const { data: activeDonors, error } = await supabase
+            .from('donor_statuses')
+            .select(`
+              user_id,
+              profiles:user_id (
+                id,
+                full_name,
+                blood_group,
+                avatar_url,
+                verification_badge,
+                location_coords
+              )
+            `)
+            .eq('state', 'ACTIVE');
+
+          if (!error && activeDonors && activeDonors.length > 0) {
+            const donorsWithCoords = activeDonors
+              .map((item: any) => {
+                const prof = item.profiles;
+                if (!prof || !prof.location_coords) return null;
+                const coords = parsePostGISPoint(prof.location_coords);
+                if (!coords) return null;
+                return {
+                  id: prof.id,
+                  display_name: prof.full_name,
+                  blood_group: prof.blood_group || 'O+',
+                  avatar_url: prof.avatar_url,
+                  verification_badge: !!prof.verification_badge,
+                  latitude: coords.latitude,
+                  longitude: coords.longitude,
+                };
+              })
+              .filter(Boolean);
+
+            const combinedMap = new Map();
+            localBots.forEach((b: any) => combinedMap.set(b.id, b));
+            donorsWithCoords.forEach((b: any) => combinedMap.set(b.id, b));
+            const combined = Array.from(combinedMap.values());
+            console.log('[VENO] fetchActiveDonors: DB donors:', donorsWithCoords.length, 'combined total:', combined.length);
+            setActiveDemoDonors(combined);
+          } else {
+            console.log('[VENO] fetchActiveDonors: No DB donors, using', localBots.length, 'local bots');
+            setActiveDemoDonors(localBots);
           }
         } else {
           setActiveDemoDonors([]);
         }
       } catch (e) {
-        console.warn('Error reading demo state in Request dashboard:', e);
+        console.warn('Error reading active donors in Request dashboard:', e);
       }
     };
 
-    checkDemoMode();
-    
-    // Listen for demo changes to update dashboard indicators
+    fetchActiveDonors();
+
     const listener = DeviceEventEmitter.addListener('demoStateChanged', () => {
-      checkDemoMode();
+      console.log('[VENO] demoStateChanged event received — refreshing donors + queue');
+      fetchActiveDonors();
       fetchActiveRequestAndQueue();
     });
-    
-    return () => listener.remove();
+
+    const locationListener = DeviceEventEmitter.addListener('demoBotLocationUpdate', ({ userId, latitude, longitude }) => {
+      console.log(`[VENO] Live GPS update for ${userId}: lat=${latitude}, lng=${longitude}`);
+      setLiveDonorLocations((prev) => ({
+        ...prev,
+        [userId]: { latitude, longitude },
+      }));
+      animateToLocation(userId, latitude, longitude);
+    });
+
+    return () => {
+      listener.remove();
+      locationListener.remove();
+    };
   }, []);
 
   const checkPermissions = async () => {
@@ -218,9 +371,9 @@ export default function RequestDashboardScreen() {
 
   const fetchCurrentLocation = async () => {
     try {
-      let location = await Location.getLastKnownPositionAsync({});
+      let location: Location.LocationObject | null = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       if (!location) {
-        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        location = await Location.getLastKnownPositionAsync({});
       }
       if (location) {
         setCurrentUserCoords({
@@ -229,7 +382,18 @@ export default function RequestDashboardScreen() {
         });
       }
     } catch (err) {
-      console.warn('GPS location retrieval error:', err);
+      // Fall back to last known position if active GPS fetch fails or times out
+      try {
+        const lastLoc = await Location.getLastKnownPositionAsync({});
+        if (lastLoc) {
+          setCurrentUserCoords({
+            latitude: lastLoc.coords.latitude,
+            longitude: lastLoc.coords.longitude,
+          });
+        }
+      } catch (fallbackErr) {
+        console.warn('GPS location retrieval error:', fallbackErr);
+      }
     } finally {
       // Trigger data fetch regardless of whether GPS resolved coordinates (falls back to defaults)
       fetchActiveRequestAndQueue();
@@ -301,6 +465,7 @@ export default function RequestDashboardScreen() {
             full_name,
             phone_number,
             blood_group,
+            points,
             location_coords,
             avatar_url,
             verification_badge,
@@ -314,7 +479,26 @@ export default function RequestDashboardScreen() {
 
       if (queueErr) throw queueErr;
 
-      setQueueDonors((queueData as any) || []);
+      let finalQueue = (queueData as any[]) || [];
+
+      // Check if demo is active and read demo_accepted_queue fallback
+      const activeDemo = await AsyncStorage.getItem('is_demo_active');
+      if (activeDemo === 'true') {
+        const localQueueJson = await AsyncStorage.getItem('demo_accepted_queue');
+        if (localQueueJson) {
+          const localQueue = JSON.parse(localQueueJson);
+          localQueue.forEach((lqItem: any) => {
+            const existingIndex = finalQueue.findIndex((q) => q.donor_id === lqItem.donor_id);
+            if (existingIndex >= 0) {
+              finalQueue[existingIndex] = lqItem;
+            } else {
+              finalQueue.push(lqItem);
+            }
+          });
+        }
+      }
+
+      setQueueDonors(finalQueue);
     } catch (e: any) {
       console.warn('Error querying queue data:', e.message);
     }
@@ -381,6 +565,7 @@ export default function RequestDashboardScreen() {
   }, [isLoading, activeRequest?.id, queueDonors.length]);
 
   const handleRecenterMap = () => {
+    console.log('[VENO RECENTER BTN] handleRecenterMap clicked! cameraRef exists:', !!cameraRef.current);
     if (!cameraRef.current) return;
 
     if (activeRequest) {
@@ -439,6 +624,43 @@ export default function RequestDashboardScreen() {
     }
   };
 
+  const handleFocusRequestLocation = () => {
+    console.log('====================================================');
+    console.log('[VENO LOCATION BTN] Button pressed!');
+    console.log('[VENO LOCATION BTN] mapEnabled:', mapEnabled, '| isFocused:', isFocused);
+    console.log('[VENO LOCATION BTN] cameraRef.current exists:', !!cameraRef.current);
+    console.log('[VENO LOCATION BTN] activeRequest ID:', activeRequest?.id, '| Address:', activeRequest?.location_address);
+    console.log('[VENO LOCATION BTN] raw location_coords:', activeRequest?.location_coords);
+
+    const coords = activeRequest ? parsePostGISPoint(activeRequest.location_coords) : null;
+    console.log('[VENO LOCATION BTN] parsed coords:', coords);
+
+    if (!cameraRef.current) {
+      console.warn('[VENO LOCATION BTN WARN] cameraRef.current is missing/null!');
+      console.log('====================================================');
+      return;
+    }
+
+    if (!coords) {
+      console.warn('[VENO LOCATION BTN WARN] Could not parse valid coordinates from activeRequest!');
+      console.log('====================================================');
+      return;
+    }
+
+    console.log('[VENO LOCATION BTN SUCCESS] Executing setCamera to:', [coords.longitude, coords.latitude], 'zoomLevel: 11.8');
+    try {
+      cameraRef.current.setCamera({
+        centerCoordinate: [coords.longitude, coords.latitude],
+        zoomLevel: 11.8,
+        animationDuration: 1000,
+      });
+      console.log('[VENO LOCATION BTN SUCCESS] setCamera completed successfully!');
+    } catch (err) {
+      console.error('[VENO LOCATION BTN ERROR] setCamera threw an error:', err);
+    }
+    console.log('====================================================');
+  };
+
   // 4. Action Handlers (Confirm, Cancel, Complete)
   const handleConfirmDonor = async (donor: QueueDonor) => {
     showCustomAlert({
@@ -467,6 +689,42 @@ export default function RequestDashboardScreen() {
             .neq('donor_id', donor.donor_id);
 
           if (queueErr) throw queueErr;
+
+          // C. Update local demo queue in AsyncStorage so state is MATCHED immediately
+          const activeDemo = await AsyncStorage.getItem('is_demo_active');
+          if (activeDemo === 'true') {
+            const localQueueJson = await AsyncStorage.getItem('demo_accepted_queue');
+            if (localQueueJson) {
+              const localQueue = JSON.parse(localQueueJson);
+              const updatedQueue = localQueue.map((q: any) => {
+                if (q.donor_id === donor.donor_id) {
+                  return {
+                    ...q,
+                    status: 'ACCEPTED',
+                    profiles: {
+                      ...q.profiles,
+                      donor_statuses: { state: 'MATCHED' }
+                    }
+                  };
+                } else {
+                  return {
+                    ...q,
+                    status: 'DECLINED',
+                    profiles: {
+                      ...q.profiles,
+                      donor_statuses: { state: 'DECLINED' }
+                    }
+                  };
+                }
+              });
+              await AsyncStorage.setItem('demo_accepted_queue', JSON.stringify(updatedQueue));
+            }
+          }
+
+          // Trigger local state updates
+          await fetchQueueData(activeRequest!.id);
+          DeviceEventEmitter.emit('demoStateChanged');
+          DeviceEventEmitter.emit('confirmDonorMatched');
 
           showCustomAlert({
             title: 'Donor Confirmed',
@@ -669,6 +927,7 @@ export default function RequestDashboardScreen() {
 
 
   function getDonorStateFromQueue(donor: QueueDonor): 'PENDING' | 'ACCEPTED' | 'MATCHED' {
+    if (!donor || !donor.profiles) return 'PENDING';
     const rawState = Array.isArray(donor.profiles.donor_statuses)
       ? donor.profiles.donor_statuses[0]?.state
       : donor.profiles.donor_statuses?.state;
@@ -679,6 +938,76 @@ export default function RequestDashboardScreen() {
   }
 
   const styles = getStyles(theme);
+
+  const requestCoordinates = activeRequest ? parsePostGISPoint(activeRequest.location_coords) : null;
+  const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
+  
+  const donorAnimated = matchedDonor ? animatedDonorLocations[matchedDonor.donor_id] : null;
+  const donorLive = matchedDonor ? liveDonorLocations[matchedDonor.donor_id] : null;
+  const donorProfile = matchedDonor?.profiles?.location_coords ? parsePostGISPoint(matchedDonor.profiles.location_coords) : null;
+  const activeMatchedDonorCoords = donorAnimated || donorLive || donorProfile;
+
+  // Fetch road navigation directions for matched donor (ONCE when donor is matched)
+  useEffect(() => {
+    if (!requestCoordinates || !matchedDonor) {
+      setMatchedRoutePolyline(null);
+      return;
+    }
+
+    let active = true;
+    const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+    const initialCoords = donorProfile || activeMatchedDonorCoords;
+
+    if (!initialCoords) return;
+
+    fetchRouteDirections(initialCoords, requestCoordinates, mapboxToken).then((coords) => {
+      if (active) {
+        setMatchedRoutePolyline(coords);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    matchedDonor?.donor_id,
+    requestCoordinates?.latitude,
+    requestCoordinates?.longitude,
+  ]);
+
+  // Dynamic route coordinates that dynamically shrink as the donor travels to the hospital
+  let routeCoordinates: [number, number][] | null = null;
+  if (requestCoordinates && activeMatchedDonorCoords) {
+    const currentDonorPt: [number, number] = [
+      activeMatchedDonorCoords.longitude,
+      activeMatchedDonorCoords.latitude,
+    ];
+
+    if (matchedRoutePolyline && matchedRoutePolyline.length > 0) {
+      // Find the closest point index on the polyline to the donor's current position
+      let closestIdx = 0;
+      let minDistance = Infinity;
+
+      matchedRoutePolyline.forEach((pt, idx) => {
+        const dx = pt[0] - currentDonorPt[0];
+        const dy = pt[1] - currentDonorPt[1];
+        const dist = dx * dx + dy * dy;
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIdx = idx;
+        }
+      });
+
+      // Truncate traveled road and connect current donor location -> remaining road -> hospital!
+      const remainingWaypoints = matchedRoutePolyline.slice(closestIdx + 1);
+      routeCoordinates = [currentDonorPt, ...remainingWaypoints];
+    } else {
+      routeCoordinates = [
+        currentDonorPt,
+        [requestCoordinates.longitude, requestCoordinates.latitude],
+      ];
+    }
+  }
 
   // Core loading display
   if (isLoading) {
@@ -708,23 +1037,6 @@ export default function RequestDashboardScreen() {
     );
   }
 
-  const requestCoordinates = activeRequest ? parsePostGISPoint(activeRequest.location_coords) : null;
-  const matchedDonor = queueDonors.find((d) => getDonorStateFromQueue(d) === 'MATCHED');
-  
-  // Coordinates mapping for routing dash lines
-  let routeCoordinates: [number, number][] | null = null;
-  if (requestCoordinates && matchedDonor) {
-    const donorLive = liveDonorLocations[matchedDonor.donor_id];
-    const donorProfile = parsePostGISPoint(matchedDonor.profiles.location_coords);
-    const activeDonor = donorLive || donorProfile;
-    if (activeDonor) {
-      routeCoordinates = [
-        [activeDonor.longitude, activeDonor.latitude],
-        [requestCoordinates.longitude, requestCoordinates.latitude],
-      ];
-    }
-  }
-
   return (
     <AnimatedScreenWrapper style={styles.screen} screenIndex={1}>
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -749,7 +1061,7 @@ export default function RequestDashboardScreen() {
       {/* Map Segment (Top 2/3 of screen) */}
       <View style={styles.mapSegment}>
         {mapEnabled && isFocused ? (
-          <Mapbox.MapView style={StyleSheet.absoluteFill} logoEnabled={false} attributionEnabled={false}>
+          <Mapbox.MapView style={StyleSheet.absoluteFill} styleURL={Mapbox.StyleURL.Street} logoEnabled={false} attributionEnabled={false}>
             <Mapbox.Camera
               ref={cameraRef}
               zoomLevel={13}
@@ -761,6 +1073,31 @@ export default function RequestDashboardScreen() {
                   : [90.4125, 23.8103]
               }
             />
+
+            {/* 10km Geofence Radius Circle around Request Location */}
+            {requestCoordinates && (
+              <Mapbox.ShapeSource
+                id="radius10kmSource"
+                shape={createGeoJSONCircle(requestCoordinates, 10)}
+              >
+                <Mapbox.FillLayer
+                  id="radius10kmFill"
+                  style={{
+                    fillColor: theme.colors.brand.default,
+                    fillOpacity: 0.07,
+                  }}
+                />
+                <Mapbox.LineLayer
+                  id="radius10kmOutline"
+                  style={{
+                    lineColor: theme.colors.brand.default,
+                    lineWidth: 1.5,
+                    lineDasharray: [3, 3],
+                    lineOpacity: 0.6,
+                  }}
+                />
+              </Mapbox.ShapeSource>
+            )}
 
             {/* Requester's destination marker - Avatar or Plus icon */}
             {requestCoordinates && (
@@ -794,79 +1131,164 @@ export default function RequestDashboardScreen() {
 
             {/* Donor markers - Normal MapPin circles or Avatar images */}
             {activeRequest &&
-              queueDonors.map((donor) => {
-                const donorState = getDonorStateFromQueue(donor);
-                const liveLocation = liveDonorLocations[donor.donor_id];
-                const profileLocation = parsePostGISPoint(donor.profiles.location_coords);
-                let markerCoords = liveLocation || profileLocation;
+              queueDonors
+                .filter((donor) => {
+                  if (!showOnlyMatchedDonor) return true;
+                  return getDonorStateFromQueue(donor) === 'MATCHED';
+                })
+                .map((donor) => {
+                  if (!donor || !donor.profiles) return null;
+                  const donorState = getDonorStateFromQueue(donor);
+                  const smoothLocation = animatedDonorLocations[donor.donor_id];
+                  const liveLocation = liveDonorLocations[donor.donor_id];
+                  const profileLocation = donor.profiles.location_coords
+                    ? parsePostGISPoint(donor.profiles.location_coords)
+                    : null;
+                  
+                  // Use consistent profile/live location without grid offset to prevent pin teleportation
+                  const markerCoords = (donorState === 'MATCHED' && smoothLocation) ? smoothLocation : (liveLocation || profileLocation);
 
-                if (!markerCoords) return null;
+                  if (!markerCoords) return null;
 
-                // Fuzz location to 500m grid for privacy if the donor is not MATCHED yet
-                if (donorState !== 'MATCHED') {
-                  markerCoords = snapToGrid(markerCoords.latitude, markerCoords.longitude);
-                }
+                  // Determine pin state and visual styling:
+                  // 1. MATCHED: Vibrant Green (#1F9952) + Blinking Green Halo
+                  // 2. ACCEPTED (when a MATCHED donor exists): Standby Amber (#FF9500) + Pulsing Amber Halo
+                  // 3. ACCEPTED (before any match): Active Red (#E63946) + Pulsing Red Halo
+                  // 4. PENDING / UNACCEPTED: Dimmed Gray (#8C9099)
+                  const hasMatchedDonor = !!matchedDonor;
+                  let pinColor = '#8C9099'; // Dimmed Gray for un-accepted spawned bots
+                  let isGrayscale = true;
+                  let haloType: 'NONE' | 'RED' | 'GREEN' | 'AMBER' = 'NONE';
 
-                // Color mappings based on queue status states
-                let pinColor = '#8C9099'; // gray pending/inactive
-                if (donorState === 'ACCEPTED') pinColor = theme.colors.status.pending; // yellow/amber queue
-                if (donorState === 'MATCHED') pinColor = theme.colors.status.active; // green matched en route
+                  if (donorState === 'MATCHED') {
+                    pinColor = theme.colors.status.active; // Vibrant Green (#1F9952)
+                    isGrayscale = false;
+                    haloType = 'GREEN';
+                  } else if (donorState === 'ACCEPTED') {
+                    if (hasMatchedDonor) {
+                      pinColor = '#FF9500'; // Standby Amber/Orange (#FF9500)
+                      isGrayscale = false;
+                      haloType = 'AMBER';
+                    } else {
+                      pinColor = theme.colors.brand.default; // Active Red (#E63946)
+                      isGrayscale = false;
+                      haloType = 'RED';
+                    }
+                  }
 
-                return (
-                  <Mapbox.MarkerView
-                    key={donor.id}
-                    id={`donor-${donor.id}`}
-                    coordinate={[markerCoords.longitude, markerCoords.latitude]}
-                    anchor={{ x: 0.5, y: 0.5 }}
-                  >
-                    <View style={styles.donorPinContainer}>
-                      {donorState === 'ACCEPTED' && <View style={styles.yellowPinHalo} />}
-                      {donorState === 'MATCHED' && <View style={styles.greenPinHalo} />}
-                      <View style={[styles.donorPinCircle, { backgroundColor: pinColor }]}>
-                        {donor.profiles.avatar_url ? (
-                          <AvatarImage 
-                            uri={donor.profiles.avatar_url} 
-                            size={24} 
-                            borderWidth={0} 
+                  return (
+                    <Mapbox.MarkerView
+                      key={donor.id}
+                      id={`donor-${donor.id}`}
+                      coordinate={[markerCoords.longitude, markerCoords.latitude]}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                    >
+                      <View style={styles.donorPinContainer}>
+                        {haloType === 'RED' && <View style={styles.redPinHalo} />}
+                        {haloType === 'AMBER' && (
+                          <Animated.View
+                            style={[
+                              styles.amberPinHalo,
+                              {
+                                opacity: amberBlinkAnim,
+                                transform: [
+                                  {
+                                    scale: amberBlinkAnim.interpolate({
+                                      inputRange: [0.4, 1],
+                                      outputRange: [1, 1.6],
+                                    }),
+                                  },
+                                ],
+                              },
+                            ]}
                           />
-                        ) : (
-                          <MapPin size={14} color="#FFF" weight="fill" />
                         )}
-                      </View>
-                    </View>
-                  </Mapbox.MarkerView>
-                );
-              })}
-
-            {/* Available nearby donors (Grayed out) */}
-            {activeRequest && activeDemoDonors
-              .filter(bot => !queueDonors.some(qd => qd.donor_id === bot.id))
-              .map((bot) => {
-                // Snapped to 500m grid for privacy prior to matching/joining queue!
-                const snapped = snapToGrid(bot.latitude, bot.longitude);
-                return (
-                  <Mapbox.MarkerView
-                    key={`bot-gray-${bot.id}`}
-                    id={`bot-gray-${bot.id}`}
-                    coordinate={[snapped.longitude, snapped.latitude]}
-                    anchor={{ x: 0.5, y: 0.5 }}
-                  >
-                    <View style={styles.donorPinContainer}>
-                      <View style={[styles.donorPinCircle, { backgroundColor: '#8C9099' }]}>
-                        {bot.avatar_url ? (
-                          <AvatarImage 
-                            uri={bot.avatar_url} 
-                            size={24} 
-                            borderWidth={0} 
+                        {haloType === 'GREEN' && (
+                          <Animated.View
+                            style={[
+                              styles.greenPinHalo,
+                              {
+                                opacity: blinkAnim,
+                                transform: [
+                                  {
+                                    scale: blinkAnim.interpolate({
+                                      inputRange: [0.3, 1],
+                                      outputRange: [1, 1.8],
+                                    }),
+                                  },
+                                ],
+                              },
+                            ]}
                           />
-                        ) : (
-                          <MapPin size={14} color="#FFF" weight="fill" />
                         )}
+                        <View
+                          style={[
+                            styles.donorPinCircle,
+                            {
+                              backgroundColor: pinColor,
+                              borderColor: isGrayscale ? '#B0B4BC' : '#FFFFFF',
+                              opacity: isGrayscale ? 0.65 : 1.0,
+                            },
+                          ]}
+                        >
+                          {donor.profiles?.avatar_url ? (
+                            <View style={isGrayscale ? { opacity: 0.5 } : null}>
+                              <AvatarImage 
+                                uri={donor.profiles.avatar_url} 
+                                size={24} 
+                                borderWidth={0} 
+                              />
+                            </View>
+                          ) : (
+                            <MapPin size={14} color={isGrayscale ? '#E0E2E6' : '#FFF'} weight="fill" />
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  </Mapbox.MarkerView>
-                );
-              })}
+                    </Mapbox.MarkerView>
+                  );
+                })}
+
+            {/* Available nearby donors (Dimmed Gray) */}
+            {!showOnlyMatchedDonor &&
+              activeDemoDonors
+                .filter(bot => !queueDonors.some(qd => qd.donor_id === bot.id))
+                .map((bot) => {
+                  // Snapped to 500m grid for privacy prior to matching/joining queue!
+                  const snapped = snapToGrid(bot.latitude, bot.longitude);
+                  return (
+                    <Mapbox.MarkerView
+                      key={`bot-gray-${bot.id}`}
+                      id={`bot-gray-${bot.id}`}
+                      coordinate={[snapped.longitude, snapped.latitude]}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                    >
+                      <View style={styles.donorPinContainer}>
+                        <View
+                          style={[
+                            styles.donorPinCircle,
+                            {
+                              backgroundColor: '#8C9099',
+                              borderColor: '#B0B4BC',
+                              opacity: 0.65,
+                            },
+                          ]}
+                        >
+                          {bot.avatar_url ? (
+                            <View style={{ opacity: 0.5 }}>
+                              <AvatarImage 
+                                uri={bot.avatar_url} 
+                                size={24} 
+                                borderWidth={0} 
+                              />
+                            </View>
+                          ) : (
+                            <MapPin size={14} color="#E0E2E6" weight="fill" />
+                          )}
+                        </View>
+                      </View>
+                    </Mapbox.MarkerView>
+                  );
+                })}
 
             {/* Route Line layer to confirmed en-route donor */}
             {routeCoordinates && (
@@ -881,13 +1303,26 @@ export default function RequestDashboardScreen() {
                   },
                 }}
               >
+                {/* Outer route line casing */}
                 <Mapbox.LineLayer
-                  id="routeLine"
+                  id="routeLineCasing"
                   style={{
-                    lineColor: theme.colors.status.active,
-                    lineWidth: 3,
-                    lineDasharray: [3, 3],
-                    lineOpacity: 0.8,
+                    lineColor: theme.colors.brand.default,
+                    lineWidth: 6,
+                    lineOpacity: 0.35,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+                {/* Inner main route line */}
+                <Mapbox.LineLayer
+                  id="routeLineMain"
+                  style={{
+                    lineColor: theme.colors.brand.default,
+                    lineWidth: 3.5,
+                    lineOpacity: 0.9,
+                    lineCap: 'round',
+                    lineJoin: 'round',
                   }}
                 />
               </Mapbox.ShapeSource>
@@ -904,14 +1339,59 @@ export default function RequestDashboardScreen() {
           </View>
         )}
 
-        {/* Floating center action */}
-        <TouchableOpacity style={styles.floatRecenterBtn} onPress={handleRecenterMap}>
-          <NavigationArrow size={20} color={theme.colors.text.primary} weight="fill" />
-        </TouchableOpacity>
+        {/* Top Filter Chip — Show En-Route Only */}
+        {matchedDonor && (
+          <View style={styles.topFilterChipContainer}>
+            <TouchableOpacity
+              style={[
+                styles.topFilterChip,
+                showOnlyMatchedDonor 
+                  ? { backgroundColor: theme.colors.status.active } 
+                  : { backgroundColor: theme.colors.bg.surface, borderColor: theme.colors.border.strong, borderWidth: 1 }
+              ]}
+              onPress={() => setShowOnlyMatchedDonor(!showOnlyMatchedDonor)}
+              activeOpacity={0.8}
+            >
+              <Target size={14} color={showOnlyMatchedDonor ? '#FFF' : theme.colors.status.active} weight="bold" />
+              <Text style={[styles.topFilterChipText, { color: showOnlyMatchedDonor ? '#FFF' : theme.colors.text.primary }]}>
+                {showOnlyMatchedDonor ? 'Showing En-Route Only' : 'Show En-Route Only'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Floating Side Map Controls */}
+        <View style={styles.floatControlStack}>
+          {activeRequest && requestCoordinates && (
+            <TouchableOpacity 
+              style={[styles.floatBtn, styles.requestLocationFloatBtn]} 
+              onPress={handleFocusRequestLocation}
+              activeOpacity={0.8}
+            >
+              <Target size={20} color={theme.colors.brand.default} weight="bold" />
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={styles.floatBtn} onPress={handleRecenterMap} activeOpacity={0.8}>
+            <NavigationArrow size={20} color={theme.colors.text.primary} weight="fill" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Bottom sliding info sheet/panel (Bottom 1/3 of screen) */}
-      <View style={styles.bottomSheetSegment}>
+      {/* Bottom sliding responsive overlay sheet */}
+      <Animated.View
+        style={[
+          styles.bottomSheetSegment,
+          activeRequest
+            ? {
+                maxHeight: sheetAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [155, SCREEN_HEIGHT * 0.76],
+                }),
+              }
+            : null,
+        ]}
+      >
         {isActionLoading ? (
           <View style={styles.actionLoaderContainer}>
             <ActivityIndicator size="small" color={theme.colors.brand.default} />
@@ -936,9 +1416,36 @@ export default function RequestDashboardScreen() {
         ) : (
           // Active Matching Queue Dashboard
           <View style={styles.activePanelWrapper}>
+            {/* Drag handle bar / Tap to Expand-Collapse */}
+            <TouchableOpacity
+              style={styles.sheetHandleBar}
+              onPress={() => setIsSheetExpanded(!isSheetExpanded)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.sheetHandlePill} />
+              <View style={styles.sheetHeaderToggleRow}>
+                <Text style={styles.sheetHeaderToggleText}>
+                  {isSheetExpanded
+                    ? 'Slide down to collapse'
+                    : queueDonors.length > 0
+                    ? `${queueDonors.length} Candidate Beacons Available — Slide Up`
+                    : 'Pull up for details'}
+                </Text>
+                {isSheetExpanded ? (
+                  <CaretDown size={14} color={theme.colors.text.secondary} weight="bold" />
+                ) : (
+                  <CaretUp size={14} color={theme.colors.brand.default} weight="bold" />
+                )}
+              </View>
+            </TouchableOpacity>
+
             {/* Request Summary details header */}
             <View style={styles.detailsHeader}>
-              <View style={styles.detailsGrid}>
+              <TouchableOpacity 
+                style={styles.detailsGrid}
+                onPress={handleFocusRequestLocation}
+                activeOpacity={0.7}
+              >
                 <View style={styles.bloodTypeBadge}>
                   <Text style={styles.bloodTypeBadgeText}>{activeRequest.patient_blood_group}</Text>
                 </View>
@@ -948,12 +1455,24 @@ export default function RequestDashboardScreen() {
                     {activeRequest.location_address}
                   </Text>
                 </View>
-              </View>
-              <View style={styles.unitsPill}>
-                <Clock size={14} color={theme.colors.text.secondary} />
-                <Text style={styles.unitsText}>
-                  {activeRequest.units_needed} {activeRequest.units_needed === 1 ? 'Bag' : 'Bags'}
-                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.headerRightGroup}>
+                <View style={styles.unitsPill}>
+                  <Clock size={14} color={theme.colors.text.secondary} />
+                  <Text style={styles.unitsText}>
+                    {activeRequest.units_needed} {activeRequest.units_needed === 1 ? 'Bag' : 'Bags'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.requestLocationHeaderBtn} 
+                  onPress={handleFocusRequestLocation}
+                  activeOpacity={0.8}
+                >
+                  <Target size={14} color={theme.colors.brand.default} weight="bold" />
+                  <Text style={styles.requestLocationHeaderBtnText}>Location</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -963,6 +1482,20 @@ export default function RequestDashboardScreen() {
               contentContainerStyle={styles.queueScrollContainer}
               showsVerticalScrollIndicator={false}
             >
+              {matchedDonor && (
+                <View style={styles.matchedBannerContainer}>
+                  <View style={styles.matchedBannerIconWrapper}>
+                    <CheckCircle size={22} color={theme.colors.status.active} weight="fill" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.matchedBannerTitle}>Match Confirmed & En-Route</Text>
+                    <Text style={styles.matchedBannerSubtitle}>
+                      {matchedDonor.profiles?.full_name} has accepted and is navigating to {activeRequest.location_address}.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               <Text style={styles.queueEyebrow}>MATCHED CANDIDATE BEACONS</Text>
 
               {queueDonors.length === 0 ? (
@@ -978,14 +1511,20 @@ export default function RequestDashboardScreen() {
                   const isPending = donorState === 'PENDING';
                   const isAccepted = donorState === 'ACCEPTED';
                   const isMatched = donorState === 'MATCHED';
+                  const hasMatchedDonor = !!matchedDonor;
 
                   let statusText = 'Invitation Sent';
                   let borderCol = '#D4D0C8'; // Gray
                   let bgCol = theme.colors.bg.surface;
                   
                   if (isAccepted) {
-                    statusText = 'Ready to Help';
-                    borderCol = theme.colors.status.pending; // Amber/Yellow
+                    if (hasMatchedDonor) {
+                      statusText = 'Ready to Help (Standby)';
+                      borderCol = '#FF9500'; // Standby Amber
+                    } else {
+                      statusText = 'Ready to Help';
+                      borderCol = theme.colors.brand.default; // Active Red
+                    }
                   } else if (isMatched) {
                     statusText = 'En-Route (Confirmed)';
                     borderCol = theme.colors.status.active; // Green
@@ -993,6 +1532,7 @@ export default function RequestDashboardScreen() {
                   }
 
                   return (
+                    !donor || !donor.profiles ? null : (
                     <View
                       key={donor.id}
                       style={[
@@ -1003,24 +1543,31 @@ export default function RequestDashboardScreen() {
                       {/* Left Profile details */}
                       <View style={styles.donorMetaRow}>
                         <AvatarImage 
-                          uri={donor.profiles.avatar_url} 
+                          uri={donor.profiles?.avatar_url} 
                           size={32} 
-                          borderWidth={donor.profiles.verification_badge ? 1.5 : 0}
-                          borderColor={donor.profiles.verification_badge ? theme.colors.status.active : undefined}
+                          borderWidth={donor.profiles?.verification_badge ? 1.5 : 0}
+                          borderColor={donor.profiles?.verification_badge ? theme.colors.status.active : undefined}
                         />
                         <View style={{ flex: 1 }}>
                           <View style={styles.nameHeaderRow}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text style={styles.donorName}>{donor.profiles.full_name}</Text>
-                              {donor.profiles.verification_badge && (
+                              <Text style={styles.donorName}>{donor.profiles?.full_name || 'Anonymous Donor'}</Text>
+                              {donor.profiles?.verification_badge && (
                                 <SealCheck size={14} color={theme.colors.status.active} weight="fill" />
                               )}
                             </View>
-                            <Text style={styles.donorBloodGroup}>{donor.profiles.blood_group}</Text>
+                            {isMatched ? (
+                              <View style={styles.selectedMatchBadge}>
+                                <CheckCircle size={12} color="#FFF" weight="fill" />
+                                <Text style={styles.selectedMatchBadgeText}>SELECTED</Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.donorBloodGroup}>{donor.profiles?.blood_group || ''}</Text>
+                            )}
                           </View>
                           <Text style={[
                             styles.queueStatusLabel, 
-                            isAccepted && { color: theme.colors.status.pendingText },
+                            isAccepted && { color: theme.colors.brand.default },
                             isMatched && { color: theme.colors.status.activeText }
                           ]}>
                             {statusText}
@@ -1034,25 +1581,30 @@ export default function RequestDashboardScreen() {
                           <View style={styles.callButtonsGroup}>
                             <TouchableOpacity
                               style={[styles.actionIconBtn, { borderColor: theme.colors.border.default }]}
-                              onPress={() => handleCall(donor.profiles.phone_number)}
+                              onPress={() => handleCall(donor.profiles?.phone_number || '')}
                             >
                               <Phone size={16} color={theme.colors.text.primary} weight="bold" />
                               <Text style={styles.actionIconBtnText}>Call</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={[styles.actionIconBtn, { borderColor: theme.colors.border.default }]}
-                              onPress={() => handleMessage(donor.profiles.phone_number, donor.profiles.full_name)}
+                              onPress={() => handleMessage(donor.profiles?.phone_number || '', donor.profiles?.full_name || '')}
                             >
                               <WhatsappLogo size={16} color="#25D366" weight="fill" />
                               <Text style={styles.actionIconBtnText}>WhatsApp</Text>
                             </TouchableOpacity>
                           </View>
                           <TouchableOpacity
-                            style={styles.confirmSelectBtn}
+                            style={[
+                              styles.confirmSelectBtn,
+                              hasMatchedDonor && { backgroundColor: '#FF9500' }
+                            ]}
                             onPress={() => handleConfirmDonor(donor)}
                           >
                             <CheckCircle size={14} color="#FFF" weight="fill" />
-                            <Text style={styles.confirmSelectText}>CONFIRM MATCH</Text>
+                            <Text style={styles.confirmSelectText}>
+                              {hasMatchedDonor ? 'SWITCH TO THIS DONOR' : 'CONFIRM MATCH'}
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1061,14 +1613,14 @@ export default function RequestDashboardScreen() {
                         <View style={styles.matchedCallActions}>
                           <TouchableOpacity
                             style={[styles.matchedCallBtn, { borderColor: theme.colors.status.active }]}
-                            onPress={() => handleCall(donor.profiles.phone_number)}
+                            onPress={() => handleCall(donor.profiles?.phone_number || '')}
                           >
                             <Phone size={16} color={theme.colors.status.active} weight="bold" />
                             <Text style={[styles.matchedCallBtnText, { color: theme.colors.status.active }]}>Call Donor</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={[styles.matchedCallBtn, { borderColor: theme.colors.status.active }]}
-                            onPress={() => handleMessage(donor.profiles.phone_number, donor.profiles.full_name)}
+                            onPress={() => handleMessage(donor.profiles?.phone_number || '', donor.profiles?.full_name || '')}
                           >
                             <WhatsappLogo size={16} color="#25D366" weight="fill" />
                             <Text style={[styles.matchedCallBtnText, { color: theme.colors.status.active }]}>WhatsApp</Text>
@@ -1076,6 +1628,7 @@ export default function RequestDashboardScreen() {
                         </View>
                       )}
                     </View>
+                    )
                   );
                 })
               )}
@@ -1096,7 +1649,7 @@ export default function RequestDashboardScreen() {
             </View>
           </View>
         )}
-      </View>
+      </Animated.View>
       <CustomModal
         visible={modalVisible}
         title={modalConfig.title}
@@ -1146,7 +1699,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     letterSpacing: 0.3,
   },
   mapSegment: {
-    flex: 2,
+    flex: 1,
     position: 'relative',
     backgroundColor: theme.colors.bg.subtle,
   },
@@ -1163,10 +1716,15 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     marginTop: 12,
     lineHeight: 18,
   },
-  floatRecenterBtn: {
+  floatControlStack: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 175,
     right: 16,
+    gap: 10,
+    alignItems: 'center',
+    zIndex: 95,
+  },
+  floatBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -1177,9 +1735,13 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 4,
+  },
+  requestLocationFloatBtn: {
+    borderColor: theme.colors.brand.default,
+    backgroundColor: theme.dark ? '#2E1214' : '#FFF0F0',
   },
   gpsDotContainer: {
     width: 24,
@@ -1231,12 +1793,12 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  yellowPinHalo: {
+  redPinHalo: {
     position: 'absolute',
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(230, 155, 16, 0.18)',
+    backgroundColor: 'rgba(230, 60, 78, 0.25)',
   },
   greenPinHalo: {
     position: 'absolute',
@@ -1244,6 +1806,13 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     height: 48,
     borderRadius: 24,
     backgroundColor: 'rgba(31, 153, 82, 0.18)',
+  },
+  amberPinHalo: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 149, 0, 0.22)',
   },
   donorPinCircle: {
     width: 28,
@@ -1260,17 +1829,50 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     elevation: 3,
   },
   bottomSheetSegment: {
-    flex: 1.5,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 90,
     backgroundColor: theme.colors.bg.surfaceRaised,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     borderWidth: 1,
     borderColor: theme.colors.border.subtle,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  sheetHandleBar: {
+    width: '100%',
+    paddingTop: 8,
+    paddingBottom: 4,
+    alignItems: 'center',
+    backgroundColor: theme.colors.bg.surfaceRaised,
+  },
+  sheetHandlePill: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.border.strong,
+    marginBottom: 4,
+  },
+  sheetHeaderToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 2,
+  },
+  sheetHeaderToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.text.secondary,
+    letterSpacing: 0.3,
   },
   emptyPanelContent: {
     flex: 1,
@@ -1416,12 +2018,34 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     fontSize: 11,
     color: theme.colors.text.secondary,
   },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  requestLocationHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.brand.subtle,
+    borderWidth: 1,
+    borderColor: theme.colors.brand.default,
+  },
+  requestLocationHeaderBtnText: {
+    fontFamily: theme.typography.caption.fontFamily,
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.brand.default,
+  },
   queueScroll: {
     flex: 1,
   },
   queueScrollContainer: {
     padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 50,
   },
   queueEyebrow: {
     fontFamily: theme.typography.caption.fontFamily,
@@ -1583,5 +2207,76 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     fontFamily: theme.typography.bodySm.fontFamily,
     fontSize: 13,
     color: theme.colors.brand.default,
+  },
+  topFilterChipContainer: {
+    position: 'absolute',
+    top: 14,
+    left: 16,
+    zIndex: 99,
+  },
+  topFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  topFilterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  matchedBannerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.dark ? 'rgba(31, 153, 82, 0.15)' : '#E6F9EE',
+    borderWidth: 1,
+    borderColor: theme.colors.status.active,
+    marginBottom: 16,
+  },
+  matchedBannerIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.dark ? 'rgba(31, 153, 82, 0.25)' : '#D1F4E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  matchedBannerTitle: {
+    fontFamily: theme.typography.h3.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.status.activeText,
+  },
+  matchedBannerSubtitle: {
+    fontFamily: theme.typography.bodySm.fontFamily,
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  selectedMatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.colors.status.active,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  selectedMatchBadgeText: {
+    fontFamily: theme.typography.caption.fontFamily,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.5,
   },
 });

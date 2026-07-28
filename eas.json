@@ -24,6 +24,8 @@
       "autoIncrement": true,
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dwcqdakpyrblvyzfdvdu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable__WN6TETwmNCGZC6fS_e3Bw_i1g8-XBs",
         "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1IjoiZmFpc2Fsc29ya2FyIiwiYSI6ImNtcWFuN2FvZDA4bjkycnBwNTB5dmVnYWoifQ.9umG7BvXWgfiHD1IKxMJkg",
         "RNMAPBOX_MAPS_DOWNLOAD_TOKEN": "sk.eyJ1IjoiZmFpc2Fsc29ya2FyIiwiYSI6ImNtcWFuZ3kzNDAyNmYyc3F5Mmw4N3Y0N2EifQ.MM2e8TIshlaGeKBHksNYcA"
       }

@@ -20,7 +20,14 @@ import {
 } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  try {
+    Mapbox.setAccessToken(MAPBOX_TOKEN);
+  } catch (e) {
+    console.warn('Failed to set Mapbox access token:', e);
+  }
+}
 import { useRouter } from 'expo-router';
 import { supabase } from '../../utils/supabase';
 import * as Location from 'expo-location';

@@ -36,12 +36,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { useTheme } from '../../theme';
 import CustomLoader from '../../components/CustomLoader';
 
-WebBrowser.maybeCompleteAuthSession();
-
-GoogleSignin.configure({
-  webClientId: '229379410387-tsf4mvo3dbvtnri9heo7p0aq4fqbi5iv.apps.googleusercontent.com',
-  offlineAccess: true,
-});
+// GoogleSignin.configure() is handled in _layout.tsx (root)
 
 export default function LoginScreen() {
   const theme = useTheme();

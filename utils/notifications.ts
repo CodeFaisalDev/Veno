@@ -66,3 +66,29 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
   return token;
 }
+
+/**
+ * Triggers an instant local push notification alert for testing notification handlers.
+ */
+export async function triggerTestNotification(title?: string, body?: string): Promise<boolean> {
+  try {
+    if (Platform.OS === 'web') {
+      console.warn('Notifications not supported on Web environment.');
+      return false;
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: title || '🚨 CRITICAL: O+ Blood Request',
+        body: body || 'Emergency beacon active near Gulshan Central Clinic. Tap to respond immediately!',
+        data: { type: 'EMERGENCY_REQUEST' },
+        sound: true,
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, repeats: false },
+    });
+    return true;
+  } catch (err) {
+    console.warn('Failed to schedule test notification:', err);
+    return false;
+  }
+}
+

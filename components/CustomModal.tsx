@@ -98,8 +98,8 @@ export default function CustomModal({
 
         {/* Modal content container */}
         <Animated.View 
-          entering={SlideInDown.springify().damping(20).stiffness(140)}
-          exiting={SlideOutDown.duration(200)}
+          entering={SlideInDown.duration(220)}
+          exiting={SlideOutDown.duration(180)}
           style={[
             styles.modalContainer, 
             { 
