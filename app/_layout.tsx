@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DeveloperDemoOverlay from '../components/DeveloperDemoOverlay';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { ThemeProvider, useTheme } from '../theme';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
   DMSans_400Regular,
@@ -238,16 +239,20 @@ export default function RootLayout() {
 
   if (isLoading || !fontsLoaded) {
     return (
-      <ThemeProvider>
-        <RootBootLoader />
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <RootBootLoader />
+        </ThemeProvider>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <ThemeProvider>
-      <RootStackContent session={session} />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <RootStackContent session={session} />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 

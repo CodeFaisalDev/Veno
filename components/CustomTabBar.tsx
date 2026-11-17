@@ -15,6 +15,15 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
+  const focusedRoute = state.routes[state.index];
+  const focusedDescriptor = descriptors[focusedRoute?.key];
+  const focusedOptions = focusedDescriptor?.options;
+
+  // Respect screen-specific tabBarStyle: { display: 'none' }
+  if (focusedOptions?.tabBarStyle?.display === 'none') {
+    return null;
+  }
+
   // Filter out any screens that might be hidden or invalid
   const visibleRoutes = state.routes.filter((route: any) => {
     const { options } = descriptors[route.key];
@@ -26,7 +35,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
       style={[
         styles.container,
         {
-          bottom: insets.bottom > 0 ? insets.bottom + 8 : 16,
+          bottom: insets.bottom > 0 ? insets.bottom + 8 : 20,
           backgroundColor: theme.colors.bg.surface,
           borderColor: theme.colors.border.subtle,
           borderWidth: 1,
@@ -34,7 +43,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
         },
       ]}
     >
-      {visibleRoutes.map((route: any, index: number) => {
+      {visibleRoutes.map((route: any) => {
         const { options } = descriptors[route.key];
         const label =
           options.tabBarLabel !== undefined
@@ -53,7 +62,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
           });
 
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.params);
+            navigation.navigate({ name: route.name, merge: true });
           }
         };
 
