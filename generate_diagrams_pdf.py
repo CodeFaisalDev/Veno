@@ -1,0 +1,1369 @@
+import os
+import sys
+import asyncio
+from playwright.async_api import async_playwright
+
+BASE_DIR = r"E:\Veno"
+OUTPUT_HTML = os.path.join(BASE_DIR, "Veno_System_Architecture_Diagrams.html")
+OUTPUT_PDF = os.path.join(BASE_DIR, "Veno_System_Architecture_Diagrams.pdf")
+
+def build_html():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VENO: System Architecture Diagrams & Modeling Specification</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  @page {
+    size: A4 landscape;
+    margin: 8mm 10mm 10mm 10mm;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #0F172A;
+    background-color: #F8FAFC;
+    line-height: 1.45;
+    font-size: 8.8pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sheet {
+    page-break-after: always;
+    break-after: page;
+    min-height: 192mm;
+    max-height: 192mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-bottom: 2mm;
+  }
+
+  .sheet:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Header Bar */
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #CBD5E1;
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+  }
+
+  .doc-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .brand-badge {
+    background: #991B1B;
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 9.5pt;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .doc-title-text {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #0F172A;
+  }
+
+  .doc-meta {
+    font-size: 8pt;
+    color: #64748B;
+    font-weight: 500;
+  }
+
+  /* Section Titles */
+  .section-banner {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-left: 4px solid #991B1B;
+    padding: 7px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .section-title {
+    font-size: 12pt;
+    font-weight: 800;
+    color: #0F172A;
+  }
+
+  .section-desc {
+    font-size: 8pt;
+    color: #475569;
+    margin-top: 1px;
+  }
+
+  .diagram-container {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-grow: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    overflow: hidden;
+  }
+
+  .diagram-container svg {
+    width: 100%;
+    height: 100%;
+    max-height: 144mm;
+  }
+
+  /* Legend Bar */
+  .legend-bar {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 5px 12px;
+    margin-top: 6px;
+    font-size: 7.5pt;
+    color: #334155;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .legend-box {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+
+  /* Tables */
+  .meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8pt;
+    margin-top: 6px;
+  }
+
+  .meta-table th {
+    background: #F8FAFC;
+    color: #475569;
+    text-align: left;
+    padding: 5px 8px;
+    border: 1px solid #E2E8F0;
+    font-weight: 600;
+  }
+
+  .meta-table td {
+    padding: 4px 8px;
+    border: 1px solid #E2E8F0;
+    color: #1E293B;
+  }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: COVER & SYSTEM ABSTRACT -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">AI-Driven Blood Donation Platform • Formal Modeling & System Architecture</span>
+    </div>
+    <div class="doc-meta">Department of CSE • Capstone Project Thesis Monograph</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+        <div>
+          <span style="background: #FEE2E2; color: #991B1B; font-size: 8pt; font-weight: 800; padding: 3px 8px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">Formal Software Engineering Specification</span>
+          <h1 style="font-size: 22pt; font-weight: 900; color: #0F172A; margin-top: 6px; letter-spacing: -0.5px;">SYSTEM ARCHITECTURE &amp; MODELING REPORT</h1>
+          <p style="font-size: 9.5pt; color: #475569; max-width: 820px; margin-top: 4px;">
+            Comprehensive Data Flow Diagrams (DFD Level 0, Level 1, Level 2), UML Use Case Specification, and Crow's Foot Relational Database Entity-Relationship Model (ERD) for the VENO emergency blood procurement platform.
+          </p>
+        </div>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 16px; text-align: right; min-width: 230px;">
+          <div style="font-size: 7.5pt; color: #64748B; text-transform: uppercase; font-weight: 600;">Academic Session</div>
+          <div style="font-size: 10.5pt; font-weight: 800; color: #0F172A;">2020 – 2021</div>
+          <div style="font-size: 7.5pt; color: #64748B; margin-top: 2px;">Dept. of Computer Science &amp; Engineering</div>
+          <div style="font-size: 7.5pt; color: #059669; font-weight: 700; margin-top: 2px;">● Full Specification Verified</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; margin-top: 10px;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px;">
+          <h3 style="font-size: 9pt; font-weight: 700; color: #0F172A; margin-bottom: 6px; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px;">Project Monograph Information</h3>
+          <table class="meta-table">
+            <tr><th style="width: 28%;">Project Name</th><td><strong>VENO — AI-Driven Blood Donor Matching Platform</strong></td></tr>
+            <tr><th>Project Scope</th><td>Cross-Platform Emergency Dispatcher, Real-Time PostGIS Geofencing, Gemini OCR &amp; AI Scoring</td></tr>
+            <tr><th>Research Team</th><td>Md. Bayazid Hossain • S M Golam Morshed Ehsan • Md. Faisal Sorkar</td></tr>
+            <tr><th>Project Supervisor</th><td>Md. Moshiur Rahman, Lecturer, Department of CSE</td></tr>
+            <tr><th>Database Engine</th><td>PostgreSQL 15+ with PostGIS Geospatial, pg_cron, and Row-Level Security (RLS)</td></tr>
+            <tr><th>AI Engines</th><td>Google Gemini 1.5 Flash (Document OCR Extraction &amp; Multi-Criteria Candidate Ranking)</td></tr>
+          </table>
+        </div>
+
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px;">
+          <h3 style="font-size: 9pt; font-weight: 700; color: #0F172A; margin-bottom: 6px; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px;">Document Structural Inventory</h3>
+          <ul style="list-style: none; font-size: 8.5pt; color: #334155; line-height: 1.75;">
+            <li><strong>Sheet 2:</strong> DFD Level 0 — Context Diagram (System Boundaries &amp; External Entities)</li>
+            <li><strong>Sheet 3:</strong> DFD Level 1 — Subsystem Decomposition (6 Core Processes &amp; 6 Data Stores)</li>
+            <li><strong>Sheet 4:</strong> DFD Level 2 — Detailed Sub-Process 3.0 (Emergency Spatial Matching Engine)</li>
+            <li><strong>Sheet 5:</strong> UML Use Case Diagram (Functional Boundaries, Actors, &amp; Stereotypes)</li>
+            <li><strong>Sheet 6:</strong> Crow's Foot Relational Entity-Relationship Diagram (Complete Schema &amp; Foreign Keys)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 7.5pt; color: #1E40AF; display: flex; justify-content: space-between; align-items: center;">
+      <span><strong>Engineering Standard:</strong> All diagrams conform to IEEE 1016 (Software Design Descriptions), ISO/IEC 19514 (SysML/UML), and Yourdon/DeMarco Data Flow Analysis paradigms.</span>
+      <span style="font-weight: 700;">Release 1.0 • June 2026</span>
+    </div>
+  </div>
+
+  <div class="legend-bar" style="justify-content: space-between;">
+    <span>Compiled automatically via Veno Academic Engine</span>
+    <span>Document ID: VENO-SPEC-ARCH-2026-V1</span>
+  </div>
+</div>
+
+<!-- PAGE 2: DFD LEVEL 0 (CONTEXT DIAGRAM) -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">Data Flow Architecture • DFD Level 0 (Context Diagram)</span>
+    </div>
+    <div class="doc-meta">Boundary Analysis &amp; External Entity Interactions</div>
+  </div>
+
+  <div class="section-banner">
+    <div>
+      <div class="section-title">1. DFD Level 0: Context Diagram</div>
+      <div class="section-desc">Illustrates the global environmental boundary of the VENO platform, encapsulating all internal logic in Process 0.0 and mapping clean non-overlapping data flows with all external entities.</div>
+    </div>
+    <span style="background: #F1F5F9; color: #475569; font-size: 8pt; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Context Level Boundary</span>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1060 480" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', sans-serif;">
+      <defs>
+        <!-- Gradients -->
+        <linearGradient id="procGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#991B1B"/>
+          <stop offset="100%" stop-color="#7F1D1D"/>
+        </linearGradient>
+        <linearGradient id="entUserGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#F8FAFC"/>
+          <stop offset="100%" stop-color="#E2E8F0"/>
+        </linearGradient>
+        <linearGradient id="entAiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#EFF6FF"/>
+          <stop offset="100%" stop-color="#DBEAFE"/>
+        </linearGradient>
+
+        <!-- Arrow Markers -->
+        <marker id="arrRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#DC2626"/>
+        </marker>
+        <marker id="arrBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#2563EB"/>
+        </marker>
+        <marker id="arrGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#16A34A"/>
+        </marker>
+        <marker id="arrPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#7C3AED"/>
+        </marker>
+        <marker id="arrAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#D97706"/>
+        </marker>
+        <marker id="arrSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#475569"/>
+        </marker>
+      </defs>
+
+      <!-- Center Process 0.0 -->
+      <g transform="translate(410, 160)">
+        <rect width="240" height="150" rx="20" fill="url(#procGrad)" stroke="#B91C1C" stroke-width="3" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"/>
+        <circle cx="120" cy="40" r="22" fill="#FFFFFF" fill-opacity="0.15"/>
+        <text x="120" y="44" fill="#FFFFFF" font-size="12" font-weight="800" text-anchor="middle">0.0</text>
+        <text x="120" y="75" fill="#FFFFFF" font-size="12" font-weight="800" text-anchor="middle">VENO PLATFORM</text>
+        <text x="120" y="94" fill="#FECACA" font-size="9" font-weight="600" text-anchor="middle">AI-Driven Blood Matching &amp;</text>
+        <text x="120" y="110" fill="#FECACA" font-size="9" font-weight="600" text-anchor="middle">Emergency Transit System</text>
+        <rect x="25" y="124" width="190" height="18" rx="9" fill="#000000" fill-opacity="0.25"/>
+        <text x="120" y="137" fill="#FEE2E2" font-size="7.5" font-weight="700" text-anchor="middle">POSTGRES • POSTGIS • SUPABASE</text>
+      </g>
+
+      <!-- ENTITY 1: BLOOD REQUESTER (Top-Left) -->
+      <g transform="translate(40, 40)">
+        <rect width="180" height="85" rx="8" fill="url(#entUserGrad)" stroke="#2563EB" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="24" rx="8" fill="#DBEAFE"/>
+        <text x="90" y="16" fill="#1E40AF" font-size="9.5" font-weight="800" text-anchor="middle">ENTITY: BLOOD REQUESTER</text>
+        <text x="90" y="44" fill="#0F172A" font-size="8.5" font-weight="600" text-anchor="middle">Patient / Hospital Attendant</text>
+        <text x="90" y="62" fill="#475569" font-size="7.5" text-anchor="middle">• Creates Emergency Request</text>
+        <text x="90" y="74" fill="#475569" font-size="7.5" text-anchor="middle">• Views Fuzzed Queue &amp; Tracks</text>
+      </g>
+
+      <!-- ENTITY 2: DONOR (Bottom-Left) -->
+      <g transform="translate(40, 340)">
+        <rect width="180" height="85" rx="8" fill="url(#entUserGrad)" stroke="#16A34A" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="24" rx="8" fill="#DCFCE7"/>
+        <text x="90" y="16" fill="#15803D" font-size="9.5" font-weight="800" text-anchor="middle">ENTITY: BLOOD DONOR</text>
+        <text x="90" y="44" fill="#0F172A" font-size="8.5" font-weight="600" text-anchor="middle">Verified / Active Volunteer</text>
+        <text x="90" y="62" fill="#475569" font-size="7.5" text-anchor="middle">• Toggles State (Active/Paused)</text>
+        <text x="90" y="74" fill="#475569" font-size="7.5" text-anchor="middle">• Accepts Match &amp; Streams GPS</text>
+      </g>
+
+      <!-- ENTITY 3: GOOGLE GEMINI 1.5 FLASH (Top-Right) -->
+      <g transform="translate(840, 40)">
+        <rect width="180" height="85" rx="8" fill="url(#entAiGrad)" stroke="#7C3AED" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="24" rx="8" fill="#EDE9FE"/>
+        <text x="90" y="16" fill="#6D28D9" font-size="9.5" font-weight="800" text-anchor="middle">AI ENGINE: GOOGLE GEMINI</text>
+        <text x="90" y="44" fill="#0F172A" font-size="8.5" font-weight="600" text-anchor="middle">Gemini 1.5 Flash Vision &amp; LLM</text>
+        <text x="90" y="62" fill="#475569" font-size="7.5" text-anchor="middle">• NID &amp; CBC Report OCR Parser</text>
+        <text x="90" y="74" fill="#475569" font-size="7.5" text-anchor="middle">• 4-Vector Donor Candidate Ranker</text>
+      </g>
+
+      <!-- ENTITY 4: MAPBOX & TELEMATICS (Bottom-Right) -->
+      <g transform="translate(840, 340)">
+        <rect width="180" height="85" rx="8" fill="url(#entUserGrad)" stroke="#D97706" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="24" rx="8" fill="#FEF3C7"/>
+        <text x="90" y="16" fill="#B45309" font-size="9.5" font-weight="800" text-anchor="middle">SERVICE: MAPBOX &amp; GPS</text>
+        <text x="90" y="44" fill="#0F172A" font-size="8.5" font-weight="600" text-anchor="middle">Directions API &amp; Tile Server</text>
+        <text x="90" y="62" fill="#475569" font-size="7.5" text-anchor="middle">• Turn-by-Turn Routing Polylines</text>
+        <text x="90" y="74" fill="#475569" font-size="7.5" text-anchor="middle">• 20km Bounding Box Tile Cache</text>
+      </g>
+
+      <!-- ENTITY 5: SYSTEM ADMINISTRATOR (Top-Center) -->
+      <g transform="translate(440, 10)">
+        <rect width="180" height="55" rx="8" fill="url(#entUserGrad)" stroke="#475569" stroke-width="2"/>
+        <text x="90" y="20" fill="#334155" font-size="9" font-weight="800" text-anchor="middle">SYSTEM ADMINISTRATOR</text>
+        <text x="90" y="38" fill="#64748B" font-size="7.5" text-anchor="middle">Audits, Role Escalations &amp; Telemetry</text>
+      </g>
+
+      <!-- ENTITY 6: EXPO PUSH GATEWAY (Bottom-Center) -->
+      <g transform="translate(440, 400)">
+        <rect width="180" height="55" rx="8" fill="url(#entUserGrad)" stroke="#E11D48" stroke-width="2"/>
+        <text x="90" y="20" fill="#BE123C" font-size="9" font-weight="800" text-anchor="middle">EXPO PUSH NOTIFICATION API</text>
+        <text x="90" y="38" fill="#64748B" font-size="7.5" text-anchor="middle">FCM / APNs High-Priority Broadcast</text>
+      </g>
+
+      <!-- DATA FLOW PATHS WITH METICULOUS OFFSET LABELS -->
+
+      <!-- 1. Requester -> VENO (Request submission) -->
+      <path d="M 220 65 L 340 65 L 410 180" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrBlue)"/>
+      <rect x="230" y="42" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1"/>
+      <text x="312" y="55" fill="#1D4ED8" font-size="7.5" font-weight="700" text-anchor="middle">1. Emergency Blood Request</text>
+
+      <!-- 2. VENO -> Requester (Queue & Tracking Stream) -->
+      <path d="M 410 215 L 340 100 L 220 100" fill="none" stroke="#2563EB" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrBlue)"/>
+      <rect x="230" y="105" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1"/>
+      <text x="312" y="118" fill="#1D4ED8" font-size="7.5" font-weight="700" text-anchor="middle">2. Fuzzed Queue &amp; Live Tracking</text>
+
+      <!-- 3. Donor -> VENO (Auth, GPS, Status, Medical) -->
+      <path d="M 220 365 L 350 365 L 410 260" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#arrGreen)"/>
+      <rect x="215" y="338" width="185" height="18" rx="4" fill="#FFFFFF" stroke="#86EFAC" stroke-width="1"/>
+      <text x="307" y="351" fill="#15803D" font-size="7.5" font-weight="700" text-anchor="middle">3. Availability, GPS Stream, NID/CBC</text>
+
+      <!-- 4. VENO -> Donor (Push Alerts, Match Invitations) -->
+      <path d="M 410 285 L 340 405 L 220 405" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrGreen)"/>
+      <rect x="230" y="412" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#86EFAC" stroke-width="1"/>
+      <text x="312" y="425" fill="#15803D" font-size="7.5" font-weight="700" text-anchor="middle">4. Push Invite &amp; Digital Card</text>
+
+      <!-- 5. VENO -> Gemini (Candidate Vector & Images) -->
+      <path d="M 650 180 L 720 65 L 840 65" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrPurple)"/>
+      <rect x="665" y="42" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+      <text x="747" y="55" fill="#6D28D9" font-size="7.5" font-weight="700" text-anchor="middle">5. Doc Images &amp; Candidates JSON</text>
+
+      <!-- 6. Gemini -> VENO (OCR Extracted Data & Ranked IDs) -->
+      <path d="M 840 100 L 720 100 L 650 215" fill="none" stroke="#7C3AED" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrPurple)"/>
+      <rect x="665" y="105" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+      <text x="747" y="118" fill="#6D28D9" font-size="7.5" font-weight="700" text-anchor="middle">6. Extracted Data &amp; Ranked IDs</text>
+
+      <!-- 7. VENO -> Mapbox (Route Coordinates Request) -->
+      <path d="M 650 260 L 710 365 L 840 365" fill="none" stroke="#D97706" stroke-width="2" marker-end="url(#arrAmber)"/>
+      <rect x="665" y="338" width="170" height="18" rx="4" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+      <text x="750" y="351" fill="#B45309" font-size="7.5" font-weight="700" text-anchor="middle">7. Origin &amp; Destination Waypoints</text>
+
+      <!-- 8. Mapbox -> VENO (GeoJSON Polyline & Duration) -->
+      <path d="M 840 405 L 720 405 L 650 285" fill="none" stroke="#D97706" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrAmber)"/>
+      <rect x="665" y="412" width="165" height="18" rx="4" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+      <text x="747" y="425" fill="#B45309" font-size="7.5" font-weight="700" text-anchor="middle">8. Nav Polyline &amp; Offline Tiles</text>
+
+      <!-- Admin <-> VENO -->
+      <path d="M 505 65 L 505 160" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrSlate)"/>
+      <path d="M 555 160 L 555 65" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrSlate)"/>
+      <rect x="440" y="100" width="180" height="18" rx="4" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1"/>
+      <text x="530" y="113" fill="#334155" font-size="7.5" font-weight="700" text-anchor="middle">Audit Queries &amp; Telematics Logs</text>
+
+      <!-- VENO -> Push Gateway -->
+      <path d="M 530 310 L 530 400" fill="none" stroke="#E11D48" stroke-width="2" marker-end="url(#arrRed)"/>
+      <rect x="445" y="348" width="170" height="18" rx="4" fill="#FFFFFF" stroke="#FDA4AF" stroke-width="1"/>
+      <text x="530" y="361" fill="#BE123C" font-size="7.5" font-weight="700" text-anchor="middle">Push Notification Payloads</text>
+    </svg>
+  </div>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-box" style="background: #991B1B;"></div><span><strong>Process 0.0:</strong> System Context Engine</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #2563EB;"></div><span><strong>Blue:</strong> Blood Requester In/Out</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #16A34A;"></div><span><strong>Green:</strong> Donor Flow (Auth, GPS, Status)</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #7C3AED;"></div><span><strong>Purple:</strong> Google Gemini AI Flow</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #D97706;"></div><span><strong>Amber:</strong> Mapbox Routing &amp; GIS</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #E11D48;"></div><span><strong>Red:</strong> Push Notification Broadcast</span></div>
+  </div>
+</div>
+
+<!-- PAGE 3: DFD LEVEL 1 (SUBSYSTEM FLOW - ZERO-CROSSING PERFECTION) -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">Data Flow Architecture • DFD Level 1 (Subsystem Decomposition)</span>
+    </div>
+    <div class="doc-meta">6 Core Processes &amp; 6 Relational Data Stores</div>
+  </div>
+
+  <div class="section-banner">
+    <div>
+      <div class="section-title">2. DFD Level 1: Subsystem Functional Decomposition</div>
+      <div class="section-desc">Clean horizontal-layered decomposition mapping the 6 principal functional subsystems, data persistence channels, and inter-process messaging with zero overlapping lines.</div>
+    </div>
+    <span style="background: #F1F5F9; color: #475569; font-size: 8pt; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Level 1 Architecture</span>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1080 480" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', sans-serif;">
+      <defs>
+        <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#334155"/>
+        </marker>
+        <marker id="arrRed1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#991B1B"/>
+        </marker>
+        <marker id="arrGreen1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#16A34A"/>
+        </marker>
+        <marker id="arrBlue1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#2563EB"/>
+        </marker>
+        <marker id="arrPurple1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#7C3AED"/>
+        </marker>
+      </defs>
+
+      <!-- ROW 1: ONBOARDING & DONOR LIFECYCLE (TOP) -->
+      
+      <!-- PROCESS 1.0: AUTH & ONBOARDING -->
+      <g transform="translate(40, 25)">
+        <rect width="220" height="65" rx="10" fill="#FFFFFF" stroke="#0284C7" stroke-width="2"/>
+        <rect x="0" y="0" width="220" height="20" rx="10" fill="#E0F2FE"/>
+        <text x="110" y="14" fill="#0369A1" font-size="8.5" font-weight="800" text-anchor="middle">1.0 AUTH &amp; IDENTITY</text>
+        <text x="110" y="38" fill="#0F172A" font-size="8" font-weight="600" text-anchor="middle">OTP Verify &amp; Gemini NID OCR</text>
+        <text x="110" y="52" fill="#64748B" font-size="7" text-anchor="middle">Enforces DOB ≥ 18 &amp; Jaccard ≥ 60%</text>
+      </g>
+
+      <!-- STORE D1: PROFILES -->
+      <g transform="translate(320, 38)">
+        <path d="M 140 0 L 0 0 L 0 35 L 140 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D1</text>
+        <text x="84" y="22" fill="#0F172A" font-size="8" font-weight="700" text-anchor="middle">profiles</text>
+      </g>
+
+      <!-- PROCESS 2.0: DONOR LIFECYCLE & HEALTH -->
+      <g transform="translate(520, 25)">
+        <rect width="220" height="65" rx="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+        <rect x="0" y="0" width="220" height="20" rx="10" fill="#DCFCE7"/>
+        <text x="110" y="14" fill="#15803D" font-size="8.5" font-weight="800" text-anchor="middle">2.0 DONOR LIFECYCLE</text>
+        <text x="110" y="38" fill="#0F172A" font-size="8" font-weight="600" text-anchor="middle">State Machine &amp; CBC Scanner</text>
+        <text x="110" y="52" fill="#64748B" font-size="7" text-anchor="middle">Hb &amp; Weight Cutoffs • pg_cron hourly</text>
+      </g>
+
+      <!-- STORE D2: DONOR_STATUSES -->
+      <g transform="translate(800, 15)">
+        <path d="M 150 0 L 0 0 L 0 35 L 150 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D2</text>
+        <text x="89" y="22" fill="#0F172A" font-size="8" font-weight="700" text-anchor="middle">donor_statuses</text>
+      </g>
+
+      <!-- STORE D5: MEDICATION_PROFILES -->
+      <g transform="translate(800, 65)">
+        <path d="M 150 0 L 0 0 L 0 35 L 150 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D5</text>
+        <text x="89" y="22" fill="#0F172A" font-size="7.5" font-weight="700" text-anchor="middle">medication_profiles</text>
+      </g>
+
+      <!-- Flows for Row 1 -->
+      <path d="M 260 55 L 320 55" fill="none" stroke="#0284C7" stroke-width="1.5" marker-end="url(#arr1)"/>
+      <text x="290" y="48" fill="#0369A1" font-size="6.5" font-weight="700" text-anchor="middle">Profile Data</text>
+
+      <path d="M 740 35 L 800 35" fill="none" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrGreen1)"/>
+      <path d="M 740 75 L 800 75" fill="none" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrGreen1)"/>
+
+      <!-- ROW 2: EMERGENCY REQUEST, MATCHING & QUEUE (MIDDLE) -->
+
+      <!-- PROCESS 3.0: SPATIAL MATCHING & AI RANKING -->
+      <g transform="translate(40, 180)">
+        <rect width="250" height="75" rx="10" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <rect x="0" y="0" width="250" height="20" rx="10" fill="#FEE2E2"/>
+        <text x="125" y="14" fill="#991B1B" font-size="8.5" font-weight="800" text-anchor="middle">3.0 SPATIAL MATCHING ENGINE</text>
+        <text x="125" y="38" fill="#0F172A" font-size="8" font-weight="700" text-anchor="middle">PostGIS RPC &amp; Gemini Multi-Vector Rank</text>
+        <text x="125" y="52" fill="#64748B" font-size="7" text-anchor="middle">5km / 10km Radius • 40/30/20/10 AI Weights</text>
+        <text x="125" y="65" fill="#DC2626" font-size="6.5" font-weight="700" text-anchor="middle">Enforces 1 Active Request Limit per User</text>
+      </g>
+
+      <!-- STORE D3: BLOOD_REQUESTS -->
+      <g transform="translate(360, 195)">
+        <path d="M 140 0 L 0 0 L 0 35 L 140 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D3</text>
+        <text x="84" y="22" fill="#0F172A" font-size="8" font-weight="700" text-anchor="middle">blood_requests</text>
+      </g>
+
+      <!-- PROCESS 4.0: QUEUE MANAGEMENT & DISPATCH -->
+      <g transform="translate(560, 180)">
+        <rect width="240" height="75" rx="10" fill="#FFFFFF" stroke="#D97706" stroke-width="2"/>
+        <rect x="0" y="0" width="240" height="20" rx="10" fill="#FEF3C7"/>
+        <text x="120" y="14" fill="#B45309" font-size="8.5" font-weight="800" text-anchor="middle">4.0 QUEUE &amp; NOTIFICATION DISPATCH</text>
+        <text x="120" y="38" fill="#0F172A" font-size="8" font-weight="600" text-anchor="middle">Target Selection &amp; Push Broadcaster</text>
+        <text x="120" y="52" fill="#64748B" font-size="7" text-anchor="middle">Expo Push Payload • 500m Grid Snapping</text>
+        <text x="120" y="65" fill="#D97706" font-size="6.5" font-weight="700" text-anchor="middle">Populates Top 20 Candidates (PENDING)</text>
+      </g>
+
+      <!-- STORE D4: REQUEST_QUEUES -->
+      <g transform="translate(860, 195)">
+        <path d="M 140 0 L 0 0 L 0 35 L 140 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D4</text>
+        <text x="84" y="22" fill="#0F172A" font-size="8" font-weight="700" text-anchor="middle">request_queues</text>
+      </g>
+
+      <!-- Flows for Row 2 -->
+      <path d="M 290 212 L 360 212" fill="none" stroke="#991B1B" stroke-width="1.5" marker-end="url(#arrRed1)"/>
+      <text x="325" y="206" fill="#991B1B" font-size="6.5" font-weight="700" text-anchor="middle">Create</text>
+
+      <!-- 3.0 -> 4.0 Direct Pipeline Vector -->
+      <path d="M 165 180 L 165 130 L 680 130 L 680 180" fill="none" stroke="#991B1B" stroke-width="2" marker-end="url(#arrRed1)"/>
+      <rect x="360" y="120" width="160" height="18" rx="4" fill="#FFFFFF" stroke="#FCA5A5" stroke-width="1"/>
+      <text x="440" y="132" fill="#991B1B" font-size="7" font-weight="700" text-anchor="middle">Top 20 Ranked Candidate IDs</text>
+
+      <!-- 4.0 -> D4 Write -->
+      <path d="M 800 212 L 860 212" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#arr1)"/>
+      <text x="830" y="206" fill="#B45309" font-size="6.5" font-weight="700" text-anchor="middle">Insert</text>
+
+      <!-- D1, D2, D5 read into 3.0 (Clean Left Drop) -->
+      <path d="M 390 73 L 390 100 L 90 100 L 90 180" fill="none" stroke="#64748B" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#arr1)"/>
+      <text x="240" y="94" fill="#475569" font-size="6.5">Candidate Pool Coords, Status &amp; CBC Query</text>
+
+      <!-- ROW 3: TRANSIT, CONFIRMATION & GAMIFICATION (BOTTOM) -->
+
+      <!-- PROCESS 5.0: LIVE TRANSIT TRACKING -->
+      <g transform="translate(180, 340)">
+        <rect width="250" height="70" rx="10" fill="#FFFFFF" stroke="#2563EB" stroke-width="2"/>
+        <rect x="0" y="0" width="250" height="20" rx="10" fill="#DBEAFE"/>
+        <text x="125" y="14" fill="#1D4ED8" font-size="8.5" font-weight="800" text-anchor="middle">5.0 LIVE TRANSIT TRACKING</text>
+        <text x="125" y="38" fill="#0F172A" font-size="8" font-weight="600" text-anchor="middle">Adaptive Battery GPS &amp; Presence Stream</text>
+        <text x="125" y="52" fill="#64748B" font-size="7" text-anchor="middle">30s/20s/10s Dynamic Frequency • Mapbox Polyline</text>
+      </g>
+
+      <!-- PROCESS 6.0: CONFIRMATION & REWARDS -->
+      <g transform="translate(600, 340)">
+        <rect width="250" height="70" rx="10" fill="#FFFFFF" stroke="#7C3AED" stroke-width="2"/>
+        <rect x="0" y="0" width="250" height="20" rx="10" fill="#EDE9FE"/>
+        <text x="125" y="14" fill="#6D28D9" font-size="8.5" font-weight="800" text-anchor="middle">6.0 CONFIRMATION &amp; GAMIFICATION</text>
+        <text x="125" y="38" fill="#0F172A" font-size="8" font-weight="600" text-anchor="middle">Mutual Handshake PIN &amp; Points Engine</text>
+        <text x="125" y="52" fill="#64748B" font-size="7" text-anchor="middle">+500 Points Credited • 120-Day Recovery Cooldown</text>
+      </g>
+
+      <!-- STORE D6: DONATIONS_HISTORY -->
+      <g transform="translate(900, 355)">
+        <path d="M 140 0 L 0 0 L 0 35 L 140 35" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="28" y1="0" x2="28" y2="35" stroke="#64748B" stroke-width="1.5"/>
+        <text x="14" y="22" fill="#0F172A" font-size="8.5" font-weight="800" text-anchor="middle">D6</text>
+        <text x="84" y="22" fill="#0F172A" font-size="7.5" font-weight="700" text-anchor="middle">donations_history</text>
+      </g>
+
+      <!-- Flows for Row 3 -->
+      <!-- D4 -> 5.0 (Accepted match triggers tracking) -->
+      <path d="M 910 230 L 910 295 L 305 295 L 305 340" fill="none" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrBlue1)"/>
+      <rect x="520" y="286" width="160" height="18" rx="4" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1"/>
+      <text x="600" y="298" fill="#1D4ED8" font-size="7" font-weight="700" text-anchor="middle">Accepted Match (Launch Tracking)</text>
+
+      <!-- 5.0 -> 6.0 Arrival Handshake -->
+      <path d="M 430 375 L 600 375" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrPurple1)"/>
+      <rect x="470" y="365" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+      <text x="515" y="377" fill="#6D28D9" font-size="7" font-weight="700" text-anchor="middle">Arrival Notice</text>
+
+      <!-- 6.0 -> D6 (Write History) -->
+      <path d="M 850 375 L 900 375" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arr1)"/>
+      <text x="875" y="368" fill="#6D28D9" font-size="6.5" font-weight="700" text-anchor="middle">Log</text>
+
+      <!-- 6.0 -> D2 (Set Cooldown - Outer Right Clean Path around D4) -->
+      <path d="M 725 340 L 725 320 L 1025 320 L 1025 32 L 950 32" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arr1)"/>
+      <rect x="880" y="311" width="130" height="17" rx="4" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+      <text x="945" y="323" fill="#6D28D9" font-size="6.5" font-weight="700" text-anchor="middle">Set COOLDOWN (120d)</text>
+
+      <!-- 6.0 -> D1 (Credit Points - Left Route between 3.0 and D3) -->
+      <path d="M 660 340 L 660 310 L 330 310 L 330 73" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arr1)"/>
+      <rect x="420" y="302" width="120" height="17" rx="4" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+      <text x="480" y="314" fill="#6D28D9" font-size="6.5" font-weight="700" text-anchor="middle">+500 Points Credited</text>
+    </svg>
+  </div>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-box" style="background: #F8FAFC; border: 1.5px solid #64748B;"></div><span><strong>D1 – D6:</strong> Relational PostGIS Data Stores</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #E0F2FE; border: 1.5px solid #0284C7;"></div><span><strong>1.0:</strong> Identity &amp; Onboarding</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #DCFCE7; border: 1.5px solid #16A34A;"></div><span><strong>2.0:</strong> Health &amp; State Machine</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #FEE2E2; border: 1.5px solid #991B1B;"></div><span><strong>3.0:</strong> Spatial Geofencing &amp; AI Match</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #FEF3C7; border: 1.5px solid #D97706;"></div><span><strong>4.0:</strong> Queue &amp; Push</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #DBEAFE; border: 1.5px solid #2563EB;"></div><span><strong>5.0:</strong> Real-Time GPS Tracking</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #EDE9FE; border: 1.5px solid #7C3AED;"></div><span><strong>6.0:</strong> Handshake &amp; Gamification</span></div>
+  </div>
+</div>
+
+<!-- PAGE 4: DFD LEVEL 2 (SUB-PROCESS 3.0 DETAILED PIPELINE) -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">Data Flow Architecture • DFD Level 2 (Sub-Process 3.0: Spatial Matching Engine)</span>
+    </div>
+    <div class="doc-meta">Algorithmic Pipeline • PostGIS RPC • Gemini Ranking Vector</div>
+  </div>
+
+  <div class="section-banner">
+    <div>
+      <div class="section-title">3. DFD Level 2: Sub-Process 3.0 — AI Matching &amp; Dispatch Pipeline</div>
+      <div class="section-desc">Deconstructs the critical emergency response pipeline: from initial requester input and constraint validation to PostGIS spherical filtering, Gemini AI 4-factor scoring, target queue registration, and push notification broadcast.</div>
+    </div>
+    <span style="background: #F1F5F9; color: #475569; font-size: 8pt; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Level 2 Pipeline</span>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1080 480" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', sans-serif;">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#334155"/>
+        </marker>
+        <marker id="arrRed2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#991B1B"/>
+        </marker>
+      </defs>
+
+      <!-- Input Entity: Requester (Left) -->
+      <g transform="translate(30, 200)">
+        <rect width="130" height="70" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="2"/>
+        <text x="65" y="26" fill="#1D4ED8" font-size="8.5" font-weight="800" text-anchor="middle">BLOOD REQUESTER</text>
+        <text x="65" y="44" fill="#0F172A" font-size="7.5" text-anchor="middle">Emergency Input</text>
+        <text x="65" y="58" fill="#64748B" font-size="6.5" text-anchor="middle">Location, Group, Urgency</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.1: Request Ingestion & Constraints -->
+      <g transform="translate(200, 195)">
+        <rect width="180" height="80" rx="10" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="20" rx="10" fill="#FEE2E2"/>
+        <text x="90" y="14" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">3.1 INGESTION &amp; VALIDATE</text>
+        <text x="90" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">Verify Active Request Limit</text>
+        <text x="90" y="50" fill="#64748B" font-size="7" text-anchor="middle">Enforce 1 Active Limit / User</text>
+        <text x="90" y="64" fill="#DC2626" font-size="6.5" font-weight="700" text-anchor="middle">Writes to D3: blood_requests</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.2: PostGIS Geofence & ABO Matrix -->
+      <g transform="translate(430, 195)">
+        <rect width="190" height="80" rx="10" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <rect x="0" y="0" width="190" height="20" rx="10" fill="#FEE2E2"/>
+        <text x="95" y="14" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">3.2 POSTGIS SPATIAL RPC</text>
+        <text x="95" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">find_compatible_nearby_donors</text>
+        <text x="95" y="50" fill="#64748B" font-size="7" text-anchor="middle">Radius: 5km (Normal) / 10km (Crit)</text>
+        <text x="95" y="64" fill="#059669" font-size="6.5" font-weight="700" text-anchor="middle">Filters Active &amp; ABO/Rh Matrix</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.3: Feature Vector Aggregator -->
+      <g transform="translate(670, 195)">
+        <rect width="180" height="80" rx="10" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <rect x="0" y="0" width="180" height="20" rx="10" fill="#FEE2E2"/>
+        <text x="90" y="14" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">3.3 FEATURE AGGREGATOR</text>
+        <text x="90" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">Compile Candidate Vectors</text>
+        <text x="90" y="50" fill="#64748B" font-size="7" text-anchor="middle">Distance, Donations, History,</text>
+        <text x="90" y="64" fill="#475569" font-size="6.5" text-anchor="middle">Hemoglobin, Weight, Response Rate</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.4: Gemini AI 4-Vector Ranking (Top Center) -->
+      <g transform="translate(540, 25)">
+        <rect width="210" height="90" rx="12" fill="#FFFFFF" stroke="#7C3AED" stroke-width="2.5"/>
+        <rect x="0" y="0" width="210" height="22" rx="12" fill="#EDE9FE"/>
+        <text x="105" y="15" fill="#6D28D9" font-size="8.5" font-weight="800" text-anchor="middle">3.4 GEMINI AI SCORING ENGINE</text>
+        <text x="105" y="38" fill="#0F172A" font-size="7.5" font-weight="700" text-anchor="middle">Gemini 1.5 Flash Weight Vectors</text>
+        <text x="105" y="52" fill="#475569" font-size="7" text-anchor="middle">• 40% Distance + 30% Donation History</text>
+        <text x="105" y="66" fill="#475569" font-size="7" text-anchor="middle">• 20% Health Profile + 10% Response Rate</text>
+        <text x="105" y="80" fill="#7C3AED" font-size="7" font-weight="700" text-anchor="middle">Outputs: ranked_donor_ids Array</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.5: Target Queue & State Registration -->
+      <g transform="translate(890, 195)">
+        <rect width="160" height="80" rx="10" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <rect x="0" y="0" width="160" height="20" rx="10" fill="#FEE2E2"/>
+        <text x="80" y="14" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">3.5 QUEUE GENERATOR</text>
+        <text x="80" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">Insert Top 20 Candidates</text>
+        <text x="80" y="50" fill="#64748B" font-size="7" text-anchor="middle">Set Queue Status = PENDING</text>
+        <text x="80" y="64" fill="#DC2626" font-size="6.5" font-weight="700" text-anchor="middle">Donor State ➔ REQUEST_PENDING</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.6: Push Broadcast (Bottom Right) -->
+      <g transform="translate(890, 350)">
+        <rect width="160" height="75" rx="10" fill="#FFFFFF" stroke="#E11D48" stroke-width="2"/>
+        <rect x="0" y="0" width="160" height="20" rx="10" fill="#FFE4E6"/>
+        <text x="80" y="14" fill="#BE123C" font-size="8" font-weight="800" text-anchor="middle">3.6 PUSH BROADCAST</text>
+        <text x="80" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">Expo Push Notification</text>
+        <text x="80" y="50" fill="#64748B" font-size="7" text-anchor="middle">Urgent Sound &amp; Deep-Link Data</text>
+        <text x="80" y="64" fill="#BE123C" font-size="6.5" font-weight="700" text-anchor="middle">Directs to Dashboard Invite</text>
+      </g>
+
+      <!-- SUB-PROCESS 3.7: Privacy Grid Fuzzing (Bottom Center) -->
+      <g transform="translate(420, 350)">
+        <rect width="210" height="75" rx="10" fill="#FFFFFF" stroke="#0284C7" stroke-width="2"/>
+        <rect x="0" y="0" width="210" height="20" rx="10" fill="#E0F2FE"/>
+        <text x="105" y="14" fill="#0369A1" font-size="8" font-weight="800" text-anchor="middle">3.7 PRIVACY GRID SNAPPING</text>
+        <text x="105" y="36" fill="#0F172A" font-size="7.5" font-weight="600" text-anchor="middle">snapToGrid(lat, lng) Engine</text>
+        <text x="105" y="50" fill="#64748B" font-size="7" text-anchor="middle">Fuzzes Coordinates to 500m Grid</text>
+        <text x="105" y="64" fill="#0284C7" font-size="6.5" font-weight="700" text-anchor="middle">Masks Exact Location Until ACCEPTED</text>
+      </g>
+
+      <!-- Data Stores Used -->
+      <g transform="translate(225, 360)">
+        <path d="M 120 0 L 0 0 L 0 30 L 120 30" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="25" y1="0" x2="25" y2="30" stroke="#64748B" stroke-width="1.5"/>
+        <text x="12" y="18" fill="#0F172A" font-size="8" font-weight="800" text-anchor="middle">D3</text>
+        <text x="72" y="18" fill="#0F172A" font-size="7" font-weight="700" text-anchor="middle">blood_requests</text>
+      </g>
+
+      <g transform="translate(680, 360)">
+        <path d="M 120 0 L 0 0 L 0 30 L 120 30" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+        <line x1="25" y1="0" x2="25" y2="30" stroke="#64748B" stroke-width="1.5"/>
+        <text x="12" y="18" fill="#0F172A" font-size="8" font-weight="800" text-anchor="middle">D4</text>
+        <text x="72" y="18" fill="#0F172A" font-size="7" font-weight="700" text-anchor="middle">request_queues</text>
+      </g>
+
+      <!-- CONNECTING PIPELINE ARROWS (CLEAN PATHS) -->
+      <!-- Requester -> 3.1 -->
+      <path d="M 160 235 L 200 235" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arr2)"/>
+
+      <!-- 3.1 -> D3 -->
+      <path d="M 285 275 L 285 360" fill="none" stroke="#991B1B" stroke-width="1.5" marker-end="url(#arrRed2)"/>
+
+      <!-- 3.1 -> 3.2 -->
+      <path d="M 380 235 L 430 235" fill="none" stroke="#991B1B" stroke-width="2" marker-end="url(#arrRed2)"/>
+      <text x="405" y="228" fill="#991B1B" font-size="6.5" font-weight="700" text-anchor="middle">Params</text>
+
+      <!-- 3.2 -> 3.3 -->
+      <path d="M 620 235 L 670 235" fill="none" stroke="#991B1B" stroke-width="2" marker-end="url(#arrRed2)"/>
+      <text x="645" y="228" fill="#991B1B" font-size="6.5" font-weight="700" text-anchor="middle">Donors</text>
+
+      <!-- 3.3 -> 3.4 (To Gemini) -->
+      <path d="M 740 195 L 740 115" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#arr2)"/>
+      <text x="748" y="155" fill="#6D28D9" font-size="7" font-weight="700">JSON Vector</text>
+
+      <!-- 3.4 -> 3.5 (From Gemini) -->
+      <path d="M 750 70 L 970 70 L 970 195" fill="none" stroke="#7C3AED" stroke-width="2" stroke-dasharray="4,2" marker-end="url(#arr2)"/>
+      <text x="860" y="62" fill="#6D28D9" font-size="7" font-weight="700">Ranked IDs Array</text>
+
+      <!-- 3.5 -> D4 (Clean Orthogonal) -->
+      <path d="M 940 275 L 940 310 L 740 310 L 740 360" fill="none" stroke="#991B1B" stroke-width="1.5" marker-end="url(#arrRed2)"/>
+
+      <!-- 3.5 -> 3.6 -->
+      <path d="M 970 275 L 970 350" fill="none" stroke="#E11D48" stroke-width="2" marker-end="url(#arr2)"/>
+      <text x="978" y="315" fill="#BE123C" font-size="7" font-weight="700">Tokens</text>
+
+      <!-- 3.5 -> 3.7 (Clean Orthogonal Bottom Route) -->
+      <path d="M 890 235 L 870 235 L 870 325 L 525 325 L 525 350" fill="none" stroke="#0284C7" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arr2)"/>
+      <rect x="630" y="318" width="110" height="15" rx="3" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="1"/>
+      <text x="685" y="329" fill="#0369A1" font-size="6.5" font-weight="600" text-anchor="middle">Candidate Coords</text>
+    </svg>
+  </div>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-box" style="background: #FEE2E2; border: 1px solid #991B1B;"></div><span><strong>3.1 – 3.3:</strong> PostGIS Database RPC Query</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #EDE9FE; border: 1px solid #7C3AED;"></div><span><strong>3.4:</strong> Gemini 1.5 Flash Multi-Objective AI Ranking</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #FFE4E6; border: 1px solid #E11D48;"></div><span><strong>3.6:</strong> Targeted Push Notifications</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #E0F2FE; border: 1px solid #0284C7;"></div><span><strong>3.7:</strong> Privacy Preservation Fuzzing (500m Grid)</span></div>
+  </div>
+</div>
+
+<!-- PAGE 5: UML USE CASE DIAGRAM (PERFECTED ROUTING) -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">UML Architecture • Complete System Use Case Diagram</span>
+    </div>
+    <div class="doc-meta">Actor Roles • Behavioral Packages • Include/Extend Stereotypes</div>
+  </div>
+
+  <div class="section-banner">
+    <div>
+      <div class="section-title">4. UML 2.5 Use Case Diagram</div>
+      <div class="section-desc">Specifies all functional user goals across 6 functional package boundaries, illustrating primary human actors, automated machine actors, and explicit &lt;&lt;include&gt;&gt; and &lt;&lt;extend&gt;&gt; dependencies without overlapping links.</div>
+    </div>
+    <span style="background: #F1F5F9; color: #475569; font-size: 8pt; font-weight: 600; padding: 3px 8px; border-radius: 4px;">UML 2.5 Specification</span>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1080 480" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', sans-serif;">
+      <defs>
+        <marker id="umlArr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#475569"/>
+        </marker>
+        <marker id="umlArrDash" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#991B1B"/>
+        </marker>
+      </defs>
+
+      <!-- SYSTEM BOUNDARY -->
+      <rect x="180" y="10" width="710" height="460" rx="14" fill="#FAFAFA" stroke="#94A3B8" stroke-width="2" stroke-dasharray="6,4"/>
+      <rect x="180" y="10" width="260" height="24" rx="14" fill="#F1F5F9"/>
+      <text x="310" y="26" fill="#0F172A" font-size="9" font-weight="800" text-anchor="middle">SYSTEM: VENO BLOOD ECOSYSTEM</text>
+
+      <!-- ACTOR 1: REGISTERED DONOR (Left Top) -->
+      <g transform="translate(50, 70)">
+        <circle cx="30" cy="18" r="14" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <line x1="30" y1="32" x2="30" y2="60" stroke="#16A34A" stroke-width="2"/>
+        <line x1="10" y1="44" x2="50" y2="44" stroke="#16A34A" stroke-width="2"/>
+        <line x1="30" y1="60" x2="12" y2="85" stroke="#16A34A" stroke-width="2"/>
+        <line x1="30" y1="60" x2="48" y2="85" stroke="#16A34A" stroke-width="2"/>
+        <text x="30" y="102" fill="#15803D" font-size="9" font-weight="800" text-anchor="middle">BLOOD DONOR</text>
+        <text x="30" y="114" fill="#64748B" font-size="7" text-anchor="middle">(Primary Human Actor)</text>
+      </g>
+
+      <!-- ACTOR 2: BLOOD REQUESTER (Left Bottom) -->
+      <g transform="translate(50, 290)">
+        <circle cx="30" cy="18" r="14" fill="#DBEAFE" stroke="#2563EB" stroke-width="2"/>
+        <line x1="30" y1="32" x2="30" y2="60" stroke="#2563EB" stroke-width="2"/>
+        <line x1="10" y1="44" x2="50" y2="44" stroke="#2563EB" stroke-width="2"/>
+        <line x1="30" y1="60" x2="12" y2="85" stroke="#2563EB" stroke-width="2"/>
+        <line x1="30" y1="60" x2="48" y2="85" stroke="#2563EB" stroke-width="2"/>
+        <text x="30" y="102" fill="#1D4ED8" font-size="9" font-weight="800" text-anchor="middle">REQUESTER</text>
+        <text x="30" y="114" fill="#64748B" font-size="7" text-anchor="middle">(Primary Human Actor)</text>
+      </g>
+
+      <!-- ACTOR 3: GOOGLE GEMINI AI (Right Top) -->
+      <g transform="translate(940, 50)">
+        <rect width="90" height="55" rx="8" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2"/>
+        <text x="45" y="24" fill="#6D28D9" font-size="9" font-weight="800" text-anchor="middle">«system»</text>
+        <text x="45" y="42" fill="#6D28D9" font-size="8.5" font-weight="800" text-anchor="middle">Gemini AI</text>
+      </g>
+
+      <!-- ACTOR 4: MAPBOX & TELEMATICS (Right Mid) -->
+      <g transform="translate(940, 190)">
+        <rect width="90" height="55" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="2"/>
+        <text x="45" y="24" fill="#B45309" font-size="9" font-weight="800" text-anchor="middle">«system»</text>
+        <text x="45" y="42" fill="#B45309" font-size="8.5" font-weight="800" text-anchor="middle">Mapbox</text>
+      </g>
+
+      <!-- ACTOR 5: EXPO PUSH GATEWAY (Right Bottom) -->
+      <g transform="translate(940, 330)">
+        <rect width="90" height="55" rx="8" fill="#FFE4E6" stroke="#E11D48" stroke-width="2"/>
+        <text x="45" y="24" fill="#BE123C" font-size="9" font-weight="800" text-anchor="middle">«system»</text>
+        <text x="45" y="42" fill="#BE123C" font-size="8.5" font-weight="800" text-anchor="middle">Expo Push</text>
+      </g>
+
+      <!-- USE CASES (Ovals) -->
+      <!-- UC1: Register & Verify Phone OTP -->
+      <g transform="translate(200, 45)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#0284C7" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#0369A1" font-size="7.5" font-weight="700" text-anchor="middle">Register &amp; Phone OTP Auth</text>
+      </g>
+
+      <!-- UC2: Upload Identity Document -->
+      <g transform="translate(410, 45)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#0284C7" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#0369A1" font-size="7.5" font-weight="700" text-anchor="middle">Upload NID / Passport</text>
+      </g>
+
+      <!-- UC3: AI OCR Parsing & Verification -->
+      <g transform="translate(640, 45)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#6D28D9" font-size="7.5" font-weight="700" text-anchor="middle">OCR Extract &amp; Jaccard Match</text>
+      </g>
+
+      <!-- UC4: Manage Donor Availability State -->
+      <g transform="translate(200, 115)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#15803D" font-size="7.5" font-weight="700" text-anchor="middle">Toggle State (Active/Paused)</text>
+      </g>
+
+      <!-- UC5: Scan Medical CBC Report -->
+      <g transform="translate(410, 115)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#15803D" font-size="7.5" font-weight="700" text-anchor="middle">Scan CBC Medical Report</text>
+      </g>
+
+      <!-- UC6: Create Emergency Blood Request -->
+      <g transform="translate(200, 200)">
+        <ellipse cx="95" cy="24" rx="90" ry="22" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <text x="95" y="28" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">Create Blood Request (Max 1)</text>
+      </g>
+
+      <!-- UC7: PostGIS Geofence & AI Rank -->
+      <g transform="translate(420, 200)">
+        <ellipse cx="95" cy="24" rx="90" ry="22" fill="#FFFFFF" stroke="#991B1B" stroke-width="2"/>
+        <text x="95" y="28" fill="#991B1B" font-size="8" font-weight="800" text-anchor="middle">Execute Geofence &amp; AI Rank</text>
+      </g>
+
+      <!-- UC8: Broadcast Push Notifications -->
+      <g transform="translate(650, 200)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#E11D48" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#BE123C" font-size="7.5" font-weight="700" text-anchor="middle">Broadcast Top 20 Candidates</text>
+      </g>
+
+      <!-- UC9: Accept / Decline Request -->
+      <g transform="translate(200, 280)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#15803D" font-size="7.5" font-weight="700" text-anchor="middle">Accept / Decline Match Invite</text>
+      </g>
+
+      <!-- UC10: Stream Live GPS Location -->
+      <g transform="translate(410, 280)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#2563EB" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#1D4ED8" font-size="7.5" font-weight="700" text-anchor="middle">Stream Foreground GPS Task</text>
+      </g>
+
+      <!-- UC11: Real-Time Transit Map -->
+      <g transform="translate(640, 280)">
+        <ellipse cx="90" cy="22" rx="85" ry="20" fill="#FFFFFF" stroke="#2563EB" stroke-width="1.5"/>
+        <text x="90" y="26" fill="#1D4ED8" font-size="7.5" font-weight="700" text-anchor="middle">View Live Map &amp; Navigation</text>
+      </g>
+
+      <!-- UC12: Mutual Confirmation & Handshake -->
+      <g transform="translate(300, 365)">
+        <ellipse cx="100" cy="24" rx="95" ry="22" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.8"/>
+        <text x="100" y="28" fill="#6D28D9" font-size="8" font-weight="800" text-anchor="middle">Confirm Donation Handshake</text>
+      </g>
+
+      <!-- UC13: Award Points & Set Cooldown -->
+      <g transform="translate(550, 365)">
+        <ellipse cx="95" cy="24" rx="90" ry="22" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.8"/>
+        <text x="95" y="28" fill="#6D28D9" font-size="7.5" font-weight="700" text-anchor="middle">Award 500 Pts &amp; 120d Cooldown</text>
+      </g>
+
+      <!-- UC14: Display Digital QR Donor Card -->
+      <g transform="translate(300, 420)">
+        <ellipse cx="90" cy="18" rx="85" ry="17" fill="#FFFFFF" stroke="#059669" stroke-width="1.5"/>
+        <text x="90" y="22" fill="#047857" font-size="7" font-weight="700" text-anchor="middle">View Offline Digital QR Card</text>
+      </g>
+
+      <!-- RELATIONSHIP CONNECTORS (CAREFULLY ROUTED ELBOWS) -->
+      <!-- Donor Connections -->
+      <line x1="110" y1="100" x2="200" y2="65" stroke="#475569" stroke-width="1.2"/>
+      <line x1="110" y1="115" x2="200" y2="135" stroke="#475569" stroke-width="1.2"/>
+      <line x1="110" y1="130" x2="200" y2="300" stroke="#475569" stroke-width="1.2"/>
+
+      <!-- Donor to Confirmation (Routed around the UC9 oval) -->
+      <path d="M 110 145 L 140 145 L 140 375 L 205 375" fill="none" stroke="#475569" stroke-width="1.2"/>
+      <!-- Donor to QR Card (Routed down) -->
+      <path d="M 110 160 L 130 160 L 130 435 L 210 435" fill="none" stroke="#475569" stroke-width="1.2"/>
+
+      <!-- Requester Connections -->
+      <line x1="110" y1="310" x2="200" y2="65" stroke="#475569" stroke-width="1.2"/>
+      <line x1="110" y1="325" x2="200" y2="222" stroke="#475569" stroke-width="1.2"/>
+      <line x1="110" y1="340" x2="205" y2="385" stroke="#475569" stroke-width="1.2"/>
+      <path d="M 110 355 L 150 355 L 150 295 L 640 295" fill="none" stroke="#475569" stroke-width="1.2"/>
+
+      <!-- Include: UC2 -> UC3 -->
+      <path d="M 370 65 L 410 65" fill="none" stroke="#991B1B" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#umlArrDash)"/>
+      <path d="M 580 65 L 640 65" fill="none" stroke="#991B1B" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#umlArrDash)"/>
+      <text x="610" y="58" fill="#991B1B" font-size="6.5" font-weight="700">«include»</text>
+
+      <!-- Include: UC6 -> UC7 -->
+      <path d="M 380 222 L 420 222" fill="none" stroke="#991B1B" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#umlArrDash)"/>
+      <text x="400" y="215" fill="#991B1B" font-size="7" font-weight="800">«include»</text>
+
+      <!-- Include: UC7 -> UC8 -->
+      <path d="M 610 222 L 650 222" fill="none" stroke="#991B1B" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#umlArrDash)"/>
+      <text x="628" y="215" fill="#991B1B" font-size="7" font-weight="800">«include»</text>
+
+      <!-- Extend: UC9 -> UC10 -->
+      <path d="M 370 300 L 410 300" fill="none" stroke="#2563EB" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#umlArr)"/>
+      <text x="388" y="293" fill="#2563EB" font-size="6.5" font-weight="700">«extend»</text>
+
+      <!-- Include: UC12 -> UC13 -->
+      <path d="M 490 387 L 550 387" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#umlArrDash)"/>
+      <text x="518" y="380" fill="#7C3AED" font-size="7" font-weight="800">«include»</text>
+
+      <!-- External System Actor Links -->
+      <line x1="810" y1="65" x2="940" y2="75" stroke="#7C3AED" stroke-width="1.2"/>
+      <line x1="500" y1="135" x2="940" y2="85" stroke="#7C3AED" stroke-width="1.2"/>
+      <line x1="600" y1="200" x2="940" y2="95" stroke="#7C3AED" stroke-width="1.2"/>
+
+      <line x1="590" y1="300" x2="940" y2="215" stroke="#D97706" stroke-width="1.2"/>
+      <line x1="820" y1="222" x2="940" y2="355" stroke="#E11D48" stroke-width="1.2"/>
+    </svg>
+  </div>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-box" style="background: #FFFFFF; border: 1.5px solid #0F172A; border-radius: 999px;"></div><span><strong>Oval:</strong> Use Case (System Goal)</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #FEE2E2; border: 1px solid #991B1B;"></div><span><strong>&lt;&lt;include&gt;&gt;:</strong> Mandatory Sub-Execution</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #DBEAFE; border: 1px solid #2563EB;"></div><span><strong>&lt;&lt;extend&gt;&gt;:</strong> Conditional Extension Behavior</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #F1F5F9; border: 1px dashed #64748B;"></div><span><strong>Outer Box:</strong> VENO System Execution Boundary</span></div>
+  </div>
+</div>
+
+<!-- PAGE 6: CROW'S FOOT ER DIAGRAM (RE-ARCHITECTED ZERO CROSSING) -->
+<div class="sheet">
+  <div class="doc-header">
+    <div class="doc-brand">
+      <span class="brand-badge">VENO</span>
+      <span class="doc-title-text">Relational Schema Architecture • Crow's Foot Entity-Relationship Diagram</span>
+    </div>
+    <div class="doc-meta">PostgreSQL 15+ • PostGIS Spatial • Referential Integrity</div>
+  </div>
+
+  <div class="section-banner">
+    <div>
+      <div class="section-title">5. Relational Database Entity-Relationship (ER) Diagram</div>
+      <div class="section-desc">Hub-and-spoke Crow's Foot ERD centered on the PROFILES entity, ensuring 100% clean, non-crossing relational connectors across all 8 tables, foreign keys, and spatial types.</div>
+    </div>
+    <span style="background: #F1F5F9; color: #475569; font-size: 8pt; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Crow's Foot Relational Schema</span>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1100 480" xmlns="http://www.w3.org/2000/svg" style="font-family: 'JetBrains Mono', monospace;">
+
+      <!-- CENTRAL HUB TABLE: PROFILES -->
+      <g transform="translate(425, 20)">
+        <rect width="250" height="250" fill="#FFFFFF" stroke="#0F172A" stroke-width="2" rx="4"/>
+        <rect width="250" height="26" fill="#991B1B" rx="4"/>
+        <text x="125" y="17" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="9" font-weight="800" text-anchor="middle">PROFILES (Central Hub)</text>
+        <rect y="26" width="250" height="1" fill="#0F172A"/>
+        
+        <!-- PK -->
+        <rect y="27" width="250" height="20" fill="#FEE2E2"/>
+        <text x="8" y="41" fill="#991B1B" font-size="7.5" font-weight="700">PK</text>
+        <text x="35" y="41" fill="#0F172A" font-size="7.5" font-weight="700">id</text>
+        <text x="180" y="41" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="47" x2="250" y2="47" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="60" fill="#64748B" font-size="7">•</text><text x="35" y="60" fill="#0F172A" font-size="7">phone_number (UQ)</text><text x="180" y="60" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="74" fill="#64748B" font-size="7">•</text><text x="35" y="74" fill="#0F172A" font-size="7">full_name</text><text x="180" y="74" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="88" fill="#64748B" font-size="7">•</text><text x="35" y="88" fill="#0F172A" font-size="7">date_of_birth</text><text x="180" y="88" fill="#64748B" font-size="7">DATE</text>
+        <text x="8" y="102" fill="#64748B" font-size="7">•</text><text x="35" y="102" fill="#0F172A" font-size="7">blood_group</text><text x="180" y="102" fill="#64748B" font-size="7">ENUM(ABO)</text>
+        <text x="8" y="116" fill="#64748B" font-size="7">•</text><text x="35" y="116" fill="#0F172A" font-size="7">gender</text><text x="180" y="116" fill="#64748B" font-size="7">gender_type</text>
+        <text x="8" y="130" fill="#64748B" font-size="7">•</text><text x="35" y="130" fill="#0F172A" font-size="7">division / district</text><text x="180" y="130" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="144" fill="#64748B" font-size="7">•</text><text x="35" y="144" fill="#0F172A" font-size="7">upazila</text><text x="180" y="144" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="158" fill="#64748B" font-size="7">•</text><text x="35" y="158" fill="#0F172A" font-size="7">verification_badge</text><text x="180" y="158" fill="#64748B" font-size="7">BOOLEAN</text>
+        <text x="8" y="172" fill="#64748B" font-size="7">•</text><text x="35" y="172" fill="#0F172A" font-size="7">points</text><text x="180" y="172" fill="#64748B" font-size="7">INTEGER</text>
+        <text x="8" y="186" fill="#64748B" font-size="7">•</text><text x="35" y="186" fill="#0F172A" font-size="7">role</text><text x="180" y="186" fill="#64748B" font-size="7">user_role</text>
+        <text x="8" y="200" fill="#64748B" font-size="7">•</text><text x="35" y="200" fill="#0F172A" font-size="7">location_coords</text><text x="180" y="200" fill="#059669" font-size="7">GEOGRAPHY</text>
+        <text x="8" y="214" fill="#64748B" font-size="7">•</text><text x="35" y="214" fill="#0F172A" font-size="7">push_token</text><text x="180" y="214" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="228" fill="#64748B" font-size="7">•</text><text x="35" y="228" fill="#0F172A" font-size="7">created_at</text><text x="180" y="228" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+      </g>
+
+      <!-- LEFT COLUMN ENTITIES (DIRECT HORIZONTAL ACCESS TO PROFILES) -->
+
+      <!-- TABLE 2: DONOR_STATUSES (Top Left) -->
+      <g transform="translate(140, 20)">
+        <rect width="210" height="135" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="210" height="24" fill="#16A34A" rx="4"/>
+        <text x="105" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">DONOR_STATUSES (1:1)</text>
+        <!-- PK -->
+        <rect y="24" width="210" height="18" fill="#DCFCE7"/>
+        <text x="8" y="37" fill="#15803D" font-size="7" font-weight="700">PK</text>
+        <text x="32" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="150" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK -->
+        <rect y="42" width="210" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="55" fill="#0F172A" font-size="7" font-weight="700">user_id (UQ)</text>
+        <text x="150" y="55" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="60" x2="210" y2="60" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="74" fill="#64748B" font-size="7">•</text><text x="32" y="74" fill="#0F172A" font-size="7">state</text><text x="140" y="74" fill="#15803D" font-size="7">donor_state</text>
+        <text x="8" y="88" fill="#64748B" font-size="7">•</text><text x="32" y="88" fill="#0F172A" font-size="7">donation_cooldown_until</text><text x="140" y="88" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+        <text x="8" y="102" fill="#64748B" font-size="7">•</text><text x="32" y="102" fill="#0F172A" font-size="7">auto_reenable</text><text x="140" y="102" fill="#64748B" font-size="7">BOOLEAN</text>
+        <text x="8" y="116" fill="#64748B" font-size="7">•</text><text x="32" y="116" fill="#0F172A" font-size="7">pause_until</text><text x="140" y="116" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+        <text x="8" y="128" fill="#64748B" font-size="7">•</text><text x="32" y="128" fill="#0F172A" font-size="7">updated_at</text><text x="140" y="128" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+      </g>
+
+      <!-- TABLE 3: MEDICATION_PROFILES (Mid Left) -->
+      <g transform="translate(140, 175)">
+        <rect width="210" height="135" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="210" height="24" fill="#0284C7" rx="4"/>
+        <text x="105" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">MEDICATION_PROFILES (1:1)</text>
+        <!-- PK -->
+        <rect y="24" width="210" height="18" fill="#E0F2FE"/>
+        <text x="8" y="37" fill="#0284C7" font-size="7" font-weight="700">PK</text>
+        <text x="32" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="150" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK -->
+        <rect y="42" width="210" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="55" fill="#0F172A" font-size="7" font-weight="700">user_id (UQ)</text>
+        <text x="150" y="55" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="60" x2="210" y2="60" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="74" fill="#64748B" font-size="7">•</text><text x="32" y="74" fill="#0F172A" font-size="7">hemoglobin (&gt;0)</text><text x="150" y="74" fill="#64748B" font-size="7">NUMERIC</text>
+        <text x="8" y="88" fill="#64748B" font-size="7">•</text><text x="32" y="88" fill="#0F172A" font-size="7">weight (&gt;0)</text><text x="150" y="88" fill="#64748B" font-size="7">NUMERIC</text>
+        <text x="8" y="102" fill="#64748B" font-size="7">•</text><text x="32" y="102" fill="#0F172A" font-size="7">last_cbc_date</text><text x="150" y="102" fill="#64748B" font-size="7">DATE</text>
+        <text x="8" y="116" fill="#64748B" font-size="7">•</text><text x="32" y="116" fill="#0F172A" font-size="7">flagged_conditions</text><text x="150" y="116" fill="#64748B" font-size="7">JSONB</text>
+      </g>
+
+      <!-- TABLE 4: USER_BADGES (Bottom Left) -->
+      <g transform="translate(140, 330)">
+        <rect width="210" height="120" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="210" height="24" fill="#059669" rx="4"/>
+        <text x="105" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">USER_BADGES (1:N)</text>
+        <!-- PK -->
+        <rect y="24" width="210" height="18" fill="#D1FAE5"/>
+        <text x="8" y="37" fill="#047857" font-size="7" font-weight="700">PK</text>
+        <text x="32" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="150" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK -->
+        <rect y="42" width="210" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="55" fill="#0F172A" font-size="7" font-weight="700">user_id</text>
+        <text x="150" y="55" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="60" x2="210" y2="60" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="74" fill="#64748B" font-size="7">•</text><text x="32" y="74" fill="#0F172A" font-size="7">badge_name</text><text x="140" y="74" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="88" fill="#64748B" font-size="7">•</text><text x="32" y="88" fill="#0F172A" font-size="7">unlocked_at</text><text x="140" y="88" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+        <text x="8" y="102" fill="#64748B" font-size="7">•</text><text x="32" y="102" fill="#0F172A" font-size="7">points_awarded</text><text x="140" y="102" fill="#64748B" font-size="7">INTEGER</text>
+      </g>
+
+      <!-- RIGHT COLUMN ENTITIES (DIRECT ACCESS TO PROFILES & REQUESTS) -->
+
+      <!-- TABLE 5: BLOOD_REQUESTS (Top Right) -->
+      <g transform="translate(745, 20)">
+        <rect width="225" height="210" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="225" height="24" fill="#991B1B" rx="4"/>
+        <text x="112" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">BLOOD_REQUESTS (1:N)</text>
+        <!-- PK -->
+        <rect y="24" width="225" height="18" fill="#FEE2E2"/>
+        <text x="8" y="37" fill="#991B1B" font-size="7" font-weight="700">PK</text>
+        <text x="32" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="160" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK -->
+        <rect y="42" width="225" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="55" fill="#0F172A" font-size="7" font-weight="700">requester_id</text>
+        <text x="160" y="55" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="60" x2="225" y2="60" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="74" fill="#64748B" font-size="7">•</text><text x="32" y="74" fill="#0F172A" font-size="7">patient_name</text><text x="160" y="74" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="88" fill="#64748B" font-size="7">•</text><text x="32" y="88" fill="#0F172A" font-size="7">patient_blood_group</text><text x="160" y="88" fill="#64748B" font-size="7">ENUM(ABO)</text>
+        <text x="8" y="102" fill="#64748B" font-size="7">•</text><text x="32" y="102" fill="#0F172A" font-size="7">location_coords</text><text x="160" y="102" fill="#059669" font-size="7">GEOGRAPHY</text>
+        <text x="8" y="116" fill="#64748B" font-size="7">•</text><text x="32" y="116" fill="#0F172A" font-size="7">location_address</text><text x="160" y="116" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="130" fill="#64748B" font-size="7">•</text><text x="32" y="130" fill="#0F172A" font-size="7">units_needed (1-6)</text><text x="160" y="130" fill="#64748B" font-size="7">INTEGER</text>
+        <text x="8" y="144" fill="#64748B" font-size="7">•</text><text x="32" y="144" fill="#0F172A" font-size="7">urgency</text><text x="160" y="144" fill="#DC2626" font-size="7">urgency_lvl</text>
+        <text x="8" y="158" fill="#64748B" font-size="7">•</text><text x="32" y="158" fill="#0F172A" font-size="7">notes (&lt;=200 chars)</text><text x="160" y="158" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="172" fill="#64748B" font-size="7">•</text><text x="32" y="172" fill="#0F172A" font-size="7">status</text><text x="160" y="172" fill="#64748B" font-size="7">req_status</text>
+        <text x="8" y="186" fill="#64748B" font-size="7">•</text><text x="32" y="186" fill="#0F172A" font-size="7">created_at</text><text x="160" y="186" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+      </g>
+
+      <!-- TABLE 6: DONATIONS_HISTORY (Bottom Right) -->
+      <g transform="translate(745, 270)">
+        <rect width="225" height="145" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="225" height="24" fill="#7C3AED" rx="4"/>
+        <text x="112" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">DONATIONS_HISTORY (1:N)</text>
+        <!-- PK -->
+        <rect y="24" width="225" height="18" fill="#EDE9FE"/>
+        <text x="8" y="37" fill="#6D28D9" font-size="7" font-weight="700">PK</text>
+        <text x="35" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="160" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK1 -->
+        <rect y="42" width="225" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="35" y="55" fill="#0F172A" font-size="7" font-weight="700">donor_id</text>
+        <text x="160" y="55" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK2 -->
+        <rect y="60" width="225" height="18" fill="#F1F5F9"/>
+        <text x="8" y="73" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="35" y="73" fill="#0F172A" font-size="7" font-weight="700">request_id</text>
+        <text x="160" y="73" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="78" x2="225" y2="78" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="92" fill="#64748B" font-size="7">•</text><text x="35" y="92" fill="#0F172A" font-size="7">donation_date</text><text x="160" y="92" fill="#64748B" font-size="7">DATE</text>
+        <text x="8" y="106" fill="#64748B" font-size="7">•</text><text x="35" y="106" fill="#0F172A" font-size="7">location</text><text x="160" y="106" fill="#64748B" font-size="7">TEXT</text>
+        <text x="8" y="120" fill="#64748B" font-size="7">•</text><text x="35" y="120" fill="#0F172A" font-size="7">points_earned</text><text x="160" y="120" fill="#7C3AED" font-size="7">INT (+500)</text>
+      </g>
+
+      <!-- TABLE 7: REQUEST_QUEUES (Bottom Center, Directly Below PROFILES) -->
+      <g transform="translate(425, 305)">
+        <rect width="250" height="145" fill="#FFFFFF" stroke="#0F172A" stroke-width="2" rx="4"/>
+        <rect width="250" height="24" fill="#D97706" rx="4"/>
+        <text x="125" y="16" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">REQUEST_QUEUES (Associative N:M)</text>
+        <!-- PK -->
+        <rect y="24" width="250" height="18" fill="#FEF3C7"/>
+        <text x="8" y="37" fill="#B45309" font-size="7" font-weight="700">PK</text>
+        <text x="32" y="37" fill="#0F172A" font-size="7" font-weight="700">id</text>
+        <text x="180" y="37" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK1 -->
+        <rect y="42" width="250" height="18" fill="#F1F5F9"/>
+        <text x="8" y="55" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="55" fill="#0F172A" font-size="7" font-weight="700">request_id</text>
+        <text x="180" y="55" fill="#64748B" font-size="7">UUID</text>
+        <!-- FK2 -->
+        <rect y="60" width="250" height="18" fill="#F1F5F9"/>
+        <text x="8" y="73" fill="#2563EB" font-size="7" font-weight="700">FK</text>
+        <text x="32" y="73" fill="#0F172A" font-size="7" font-weight="700">donor_id</text>
+        <text x="180" y="73" fill="#64748B" font-size="7">UUID</text>
+        <line x1="0" y1="78" x2="250" y2="78" stroke="#CBD5E1"/>
+
+        <!-- Columns -->
+        <text x="8" y="92" fill="#64748B" font-size="7">•</text><text x="32" y="92" fill="#0F172A" font-size="7">status</text><text x="160" y="92" fill="#B45309" font-size="7">queue_status</text>
+        <text x="8" y="106" fill="#64748B" font-size="7">•</text><text x="32" y="106" fill="#0F172A" font-size="7">location_coords</text><text x="160" y="106" fill="#059669" font-size="7">GEOGRAPHY</text>
+        <text x="8" y="120" fill="#64748B" font-size="7">•</text><text x="32" y="120" fill="#0F172A" font-size="7">joined_at</text><text x="160" y="120" fill="#64748B" font-size="7">TIMESTAMPTZ</text>
+      </g>
+
+      <!-- TABLE 8: USAGE_TRACKER (Far Right Top) -->
+      <g transform="translate(990, 20)">
+        <rect width="90" height="90" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5" rx="4"/>
+        <rect width="90" height="20" fill="#475569" rx="4"/>
+        <text x="45" y="14" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="7.5" font-weight="800" text-anchor="middle">USAGE_TRACK</text>
+        <!-- PK -->
+        <rect y="20" width="90" height="15" fill="#F1F5F9"/>
+        <text x="4" y="31" fill="#334155" font-size="6.5" font-weight="700">PK id (UUID)</text>
+        <line x1="0" y1="35" x2="90" y2="35" stroke="#CBD5E1"/>
+        <text x="4" y="48" fill="#0F172A" font-size="6">• map_loads</text>
+        <text x="4" y="62" fill="#0F172A" font-size="6">• map_enabled</text>
+        <text x="4" y="76" fill="#0F172A" font-size="6">• updated_at</text>
+      </g>
+
+      <!-- EXPLICIT ZERO-CROSSING RELATIONAL CONNECTIONS -->
+
+      <!-- 1. PROFILES <-> DONOR_STATUSES (1:1 Left Direct) -->
+      <line x1="425" y1="65" x2="350" y2="65" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="417" y1="60" x2="417" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="412" y1="60" x2="412" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="358" y1="60" x2="358" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="363" y1="60" x2="363" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="388" y="58" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700" text-anchor="middle">1 : 1</text>
+
+      <!-- 2. PROFILES <-> MEDICATION_PROFILES (1:1 Left Direct) -->
+      <line x1="425" y1="210" x2="350" y2="210" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="417" y1="205" x2="417" y2="215" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="412" y1="205" x2="412" y2="215" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="358" y1="205" x2="358" y2="215" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="363" y1="205" x2="363" y2="215" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="388" y="203" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700" text-anchor="middle">1 : 1</text>
+
+      <!-- 3. PROFILES <-> USER_BADGES (1:N Left-Down Direct) -->
+      <path d="M 425 240 L 375 240 L 375 375 L 350 375" fill="none" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="417" y1="235" x2="417" y2="245" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 350 375 L 362 369 M 350 375 L 362 381" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="395" y="234" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700">1:N</text>
+
+      <!-- 4. PROFILES <-> BLOOD_REQUESTS (1:N Right Direct) -->
+      <line x1="675" y1="65" x2="745" y2="65" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="683" y1="60" x2="683" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="688" y1="60" x2="688" y2="70" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 745 65 L 733 59 M 745 65 L 733 71" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="710" y="58" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700" text-anchor="middle">1 : N (Requester)</text>
+
+      <!-- 5. PROFILES <-> DONATIONS_HISTORY (1:N Right-Down Route at x=725) -->
+      <path d="M 675 220 L 725 220 L 725 320 L 745 320" fill="none" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="683" y1="215" x2="683" y2="225" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 745 320 L 733 314 M 745 320 L 733 326" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="700" y="214" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700">1:N (Donor)</text>
+
+      <!-- 6. PROFILES <-> REQUEST_QUEUES (1:N Downward Center Direct) -->
+      <line x1="520" y1="270" x2="520" y2="305" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="515" y1="278" x2="525" y2="278" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 520 305 L 514 293 M 520 305 L 526 293" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="535" y="290" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700">1:N (Queued Donor)</text>
+
+      <!-- 7. BLOOD_REQUESTS <-> REQUEST_QUEUES (1:N Route at x=705) -->
+      <path d="M 745 170 L 705 170 L 705 375 L 675 375" fill="none" stroke="#0F172A" stroke-width="1.5"/>
+      <line x1="737" y1="165" x2="737" y2="175" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 675 375 L 687 369 M 675 375 L 687 381" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="690" y="260" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6.5" font-weight="700">1:N (Queues)</text>
+
+      <!-- 8. BLOOD_REQUESTS <-> DONATIONS_HISTORY (Optional 1:N) -->
+      <line x1="855" y1="230" x2="855" y2="270" stroke="#0F172A" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="850" y1="238" x2="860" y2="238" stroke="#0F172A" stroke-width="1.5"/>
+      <path d="M 855 270 L 849 258 M 855 270 L 861 258" stroke="#0F172A" stroke-width="1.5"/>
+      <text x="865" y="255" fill="#0F172A" font-family="'Inter', sans-serif" font-size="6" font-weight="600">0..1:N</text>
+    </svg>
+  </div>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-box" style="background: #FEE2E2; border: 1px solid #991B1B;"></div><span><strong>PK:</strong> Primary Key</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #F1F5F9; border: 1px solid #2563EB;"></div><span><strong>FK:</strong> Foreign Key</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #059669;"></div><span><strong>GEOGRAPHY:</strong> PostGIS WGS84 Coords Point(lng, lat)</span></div>
+    <div class="legend-item"><div class="legend-box" style="background: #7C3AED;"></div><span><strong>Crow's Foot:</strong> Cardinality (One-to-One, One-to-Many, Many-to-Many Associative)</span></div>
+  </div>
+</div>
+
+</body>
+</html>
+"""
+
+async def main():
+    print("Writing perfected HTML architecture file...")
+    html_content = build_html()
+    with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    print(f"HTML generated at: {OUTPUT_HTML}")
+
+    print("Launching Playwright to render publication-grade PDF...")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        file_url = f"file:///{OUTPUT_HTML.replace(os.sep, '/')}"
+        await page.goto(file_url, wait_until="networkidle")
+
+        await page.pdf(
+            path=OUTPUT_PDF,
+            format="A4",
+            landscape=True,
+            print_background=True,
+            margin={
+                "top": "8mm",
+                "bottom": "8mm",
+                "left": "10mm",
+                "right": "10mm"
+            },
+            display_header_footer=True,
+            header_template='<div style="font-size:7pt; color:#94a3b8; width:100%; text-align:right; padding-right:12mm; font-family:sans-serif;">VENO Architecture & System Modeling Specification</div>',
+            footer_template='<div style="font-size:7.5pt; color:#64748b; width:100%; display:flex; justify-content:space-between; padding-left:12mm; padding-right:12mm; font-family:sans-serif;"><span>Department of Computer Science & Engineering</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>'
+        )
+        await browser.close()
+    print(f"PDF successfully compiled to: {OUTPUT_PDF}")
+
+if __name__ == "__main__":
+    asyncio.run(main())

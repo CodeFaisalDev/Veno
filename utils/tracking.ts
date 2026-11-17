@@ -20,7 +20,7 @@ function getOrCreateChannel(requestId: string) {
   }
 
   if (activeChannel) {
-    activeChannel.unsubscribe();
+    supabase.removeChannel(activeChannel);
   }
 
   currentRequestId = requestId;

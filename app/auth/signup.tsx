@@ -13,7 +13,9 @@ import {
   UIManager,
   Modal,
   KeyboardAvoidingView,
+  DeviceEventEmitter,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
@@ -28,7 +30,7 @@ import {
   ShieldWarning
 } from 'phosphor-react-native';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(globalThis as any).nativeFabricUIManager) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import * as WebBrowser from 'expo-web-browser';
@@ -70,6 +72,38 @@ export default function SignUpScreen() {
     setErrorVisible(true);
   };
 
+  const handlePostAuthNavigation = async (user: any) => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, date_of_birth, division, phone_number')
+        .eq('id', user.id)
+        .single();
+
+      const isDefaultName = !profile?.full_name || profile.full_name === 'New Donor';
+      const isDefaultDob = !profile?.date_of_birth || profile.date_of_birth === '2000-01-01';
+      const isDefaultDivision = !profile?.division || profile.division === 'Default Division';
+      const isPhoneMissing = !profile?.phone_number;
+
+      const isComplete = Boolean(profile && !isDefaultName && !isDefaultDob && !isDefaultDivision && !isPhoneMissing);
+
+      await AsyncStorage.setItem('is_profile_complete', isComplete ? 'true' : 'false');
+      if (isComplete) {
+        await AsyncStorage.setItem('has_seen_guide', 'true');
+      }
+      DeviceEventEmitter.emit('profileUpdated');
+
+      if (isComplete) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/onboarding/profile-setup');
+      }
+    } catch (e) {
+      console.error('[SignUp] Error in post-auth navigation:', e);
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleSignUp = async () => {
     if (!fullName.trim()) {
       showError('Validation Error', 'Please enter your full name.');
@@ -91,11 +125,14 @@ export default function SignUpScreen() {
     setIsLoading(true);
     try {
       if (email.trim().endsWith('@veno.test')) {
-        const { error: existingSignInError } = await supabase.auth.signInWithPassword({
+        const { data: existingData, error: existingSignInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password.trim(),
         });
-        if (!existingSignInError) return;
+        if (!existingSignInError && existingData?.user) {
+          await handlePostAuthNavigation(existingData.user);
+          return;
+        }
 
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
@@ -129,13 +166,17 @@ export default function SignUpScreen() {
           return;
         }
 
-        const { error: autoSignInError } = await supabase.auth.signInWithPassword({
+        const { data: autoSignInData, error: autoSignInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password.trim(),
         });
         if (autoSignInError) {
           Alert.alert('Developer Mode', 'Bypassing SMTP. Redirecting to verification...');
           router.push({ pathname: '/auth/otp', params: { email: email.trim(), type: 'signup', bypass: 'true' } });
+          return;
+        }
+        if (autoSignInData?.user) {
+          await handlePostAuthNavigation(autoSignInData.user);
           return;
         }
         return;
@@ -177,6 +218,7 @@ export default function SignUpScreen() {
 
   const handleGoogleSignUp = async () => {
     setIsLoading(true);
+    let authSucceeded = false;
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const userInfo = await GoogleSignin.signIn();
@@ -186,12 +228,17 @@ export default function SignUpScreen() {
         throw new Error('No ID token present from Google Sign-In.');
       }
 
-      const { error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
         token: idToken,
       });
 
       if (error) throw error;
+
+      if (data?.user) {
+        authSucceeded = true;
+        await handlePostAuthNavigation(data.user);
+      }
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
       if (err.code !== 'SIGN_IN_CANCELLED' && err.message !== 'Sign in action cancelled') {
@@ -200,7 +247,9 @@ export default function SignUpScreen() {
         showError('Google Sign-Up Cancelled', 'Did you change your mind? Sign up with your Google account to create your Veno profile instantly.');
       }
     } finally {
-      setIsLoading(false);
+      if (!authSucceeded) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -213,7 +262,7 @@ export default function SignUpScreen() {
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <View style={styles.topBar}>
@@ -448,7 +497,12 @@ export default function SignUpScreen() {
               fontFamily: theme.typography.body.fontFamily,
               color: theme.colors.text.secondary 
             }]}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/auth/login')} disabled={isLoading}>
+            <TouchableOpacity 
+              onPress={() => router.push('/auth/login')} 
+              disabled={isLoading}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.redirectLink, { 
                 fontFamily: theme.typography.bodyLg.fontFamily,
                 color: theme.colors.brand.default 

@@ -30,6 +30,7 @@ import {
   CrosshairSimple,
   CheckCircle,
   Clock,
+  Drop,
   User,
   Users,
   Note,
@@ -51,7 +52,7 @@ if (MAPBOX_TOKEN) {
   }
 }
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(globalThis as any).nativeFabricUIManager) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -77,6 +78,7 @@ export default function CreateRequestScreen() {
 
   // Loader & System States
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Loading...');
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -200,6 +202,7 @@ export default function CreateRequestScreen() {
 
   // GPS centering handler
   const handleOpenMapPicker = async () => {
+    setLoadingMessage('Acquiring location...');
     setIsLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -215,9 +218,13 @@ export default function CreateRequestScreen() {
         return;
       }
 
-      let location: Location.LocationObject | null = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      // Fast location acquisition: check last known position first
+      let location: Location.LocationObject | null = await Location.getLastKnownPositionAsync({});
       if (!location) {
-        location = await Location.getLastKnownPositionAsync({});
+        // Race getCurrentPosition with a 3-second timeout so it never hangs
+        const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+        location = await Promise.race([locationPromise, timeoutPromise]);
       }
 
       if (location) {
@@ -335,6 +342,7 @@ export default function CreateRequestScreen() {
   };
 
   const handleSubmitRequest = async () => {
+    setLoadingMessage('Broadcasting matching invitations...');
     setIsLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -460,11 +468,11 @@ export default function CreateRequestScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <CustomLoader message="Broadcasting matching invitations..." />
+          <CustomLoader message={loadingMessage} />
         </View>
       ) : (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1 }}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
         >
@@ -772,7 +780,7 @@ export default function CreateRequestScreen() {
                     {/* Info items */}
                     <View style={styles.reviewInfoItem}>
                       <View style={styles.reviewIconCircle}>
-                        <Clock size={18} color={theme.colors.brand.default} weight="fill" />
+                        <Drop size={18} color={theme.colors.brand.default} weight="fill" />
                       </View>
                       <View style={{ marginLeft: 16, flex: 1 }}>
                         <Text style={styles.reviewLabel}>BLOOD AMOUNT</Text>
@@ -904,8 +912,10 @@ export default function CreateRequestScreen() {
             <View style={styles.mapWrapper}>
               <Mapbox.MapView 
                 style={StyleSheet.absoluteFill} 
+                styleURL={theme.dark ? Mapbox.StyleURL.Dark : Mapbox.StyleURL.Street}
                 logoEnabled={false} 
                 attributionEnabled={false}
+                scaleBarEnabled={false}
                 onCameraChanged={handleCameraChange}
               >
                 <Mapbox.Camera

@@ -1,6 +1,12 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withSequence, 
+  withTiming 
+} from 'react-native-reanimated';
 import { House, UserCircle, MapPin } from 'phosphor-react-native';
 import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +29,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
           bottom: insets.bottom > 0 ? insets.bottom + 8 : 16,
           backgroundColor: theme.colors.bg.surface,
           borderColor: theme.colors.border.subtle,
-          borderWidth: theme.dark ? 0 : 1,
+          borderWidth: 1,
           ...(!theme.dark ? theme.shadows.elevation2 : {}),
         },
       ]}
@@ -37,7 +43,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: any) {
             ? options.title
             : route.name;
 
-        const isFocused = state.index === index;
+        const isFocused = state.routes[state.index]?.key === route.key;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -83,27 +89,22 @@ interface TabItemProps {
 
 function TabItem({ routeName, label, isFocused, onPress, onLongPress }: TabItemProps) {
   const theme = useTheme();
-  
-  const scale = useSharedValue(isFocused ? 1.08 : 1);
-  const labelOpacity = useSharedValue(isFocused ? 1 : 0);
-  const labelTranslateY = useSharedValue(isFocused ? 0 : 4);
+  const iconScale = useSharedValue(1);
 
   useEffect(() => {
-    scale.value = withSpring(isFocused ? 1.08 : 1, theme.motion.springConfigs.default);
-    labelOpacity.value = withTiming(isFocused ? 1 : 0, { duration: theme.motion.durations.fast });
-    labelTranslateY.value = withTiming(isFocused ? 0 : 4, { duration: theme.motion.durations.fast });
+    if (isFocused) {
+      iconScale.value = withSequence(
+        withTiming(1.22, { duration: 110 }),
+        withSpring(1, { damping: 10, stiffness: 220 })
+      );
+    } else {
+      iconScale.value = withTiming(1, { duration: 100 });
+    }
   }, [isFocused]);
 
   const animatedIconStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: scale.value }],
-    };
-  });
-
-  const animatedLabelStyle = useAnimatedStyle(() => {
-    return {
-      opacity: labelOpacity.value,
-      transform: [{ translateY: labelTranslateY.value }],
+      transform: [{ scale: iconScale.value }],
     };
   });
 
@@ -128,30 +129,44 @@ function TabItem({ routeName, label, isFocused, onPress, onLongPress }: TabItemP
 
   return (
     <TouchableOpacity
+      accessibilityRole="tab"
       accessibilityState={isFocused ? { selected: true } : {}}
+      accessibilityLabel={label}
       onPress={onPress}
       onLongPress={onLongPress}
+      activeOpacity={0.7}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       style={styles.tabButton}
-      activeOpacity={0.8}
     >
-      <Animated.View style={[styles.iconWrapper, animatedIconStyle]}>
-        {getIcon(isFocused, currentColor)}
-      </Animated.View>
-      <Animated.View style={animatedLabelStyle}>
-        {isFocused && (
+      <View 
+        style={[
+          styles.innerPill, 
+          isFocused && { 
+            backgroundColor: theme.colors.brand.subtle,
+            borderColor: theme.colors.brand.default + '20',
+            borderWidth: 1,
+          },
+        ]}
+      >
+        <Animated.View style={[styles.iconWrapper, animatedIconStyle]}>
+          {getIcon(isFocused, currentColor)}
+        </Animated.View>
+        <View style={styles.labelWrapper}>
           <Text
+            numberOfLines={1}
             style={[
               styles.label,
               {
-                color: activeColor,
+                color: currentColor,
                 fontFamily: theme.typography.caption.fontFamily,
+                fontWeight: isFocused ? '600' : '500',
               },
             ]}
           >
             {label}
           </Text>
-        )}
-      </Animated.View>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -166,23 +181,35 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    paddingVertical: 8,
+  },
+  innerPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    minWidth: 70,
   },
   iconWrapper: {
     height: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  label: {
-    fontSize: 10,
-    fontWeight: '500',
+  labelWrapper: {
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 2,
+  },
+  label: {
+    fontSize: 11,
+    letterSpacing: 0.1,
   },
 });

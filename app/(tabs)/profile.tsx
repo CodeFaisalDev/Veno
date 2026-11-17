@@ -308,7 +308,12 @@ export default function ProfileScreen() {
       onConfirm: async () => {
         setModalVisible(false);
         setIsLoading(true);
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (e) {
+          console.error('Sign out error:', e);
+        }
+        router.replace('/onboarding/intro');
       },
       onCancel: () => setModalVisible(false)
     });
@@ -571,16 +576,27 @@ export default function ProfileScreen() {
     ? Math.max(1, Math.floor(profile.points / 100)) 
     : 1;
 
+  const displayLocation = (profile?.upazila && profile.upazila !== 'Default Upazila')
+    ? `${profile.upazila}, ${profile.district && profile.district !== 'Default District' ? profile.district : profile.division || 'Bangladesh'}`
+    : (profile?.division && profile.division !== 'Default Division')
+    ? `${profile.division}, Bangladesh`
+    : 'Dhaka, Bangladesh';
+
   return (
     <AnimatedScreenWrapper style={{ backgroundColor: theme.colors.bg.page }} screenIndex={2}>
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg.page }]} edges={['top']}>
       <StatusBar 
         barStyle={theme.dark ? "light-content" : "dark-content"} 
         backgroundColor={theme.colors.bg.page} 
+        translucent={false}
       />
       
-      {/* Header (Section 7.10 - blends with page bg, styled using h1) */}
-      <View style={styles.header}>
+      {/* Header (unified top bar rhythm, border-subtle) */}
+      <View style={[styles.header, {
+        backgroundColor: theme.colors.bg.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border.subtle,
+      }]}>
         <Text style={[styles.headerTitle, { 
           fontFamily: theme.typography.h1.fontFamily,
           color: theme.colors.text.primary,
@@ -589,14 +605,19 @@ export default function ProfileScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
-        {/* Digital Identity Card (Section 7.11 - landscape 320x200 styling, gradient, DM Mono blood label) */}
+        {/* Digital Identity Card (Interactive tactile share card) */}
         <View style={styles.cardWrapper}>
-          <LinearGradient
-            colors={[theme.colors.brand.default, theme.primitives.red[700]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.identityCard, { borderRadius: theme.radius.xl }]}
+          <AnimatedPressable 
+            style={{ width: '100%' }}
+            activeScale={0.98}
+            onPress={handleShareCard}
           >
+            <LinearGradient
+              colors={[theme.colors.brand.default, theme.primitives.red[700]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.identityCard, { borderRadius: theme.radius.xl }, theme.shadows.elevation3]}
+            >
             {/* Top row */}
             <View style={styles.cardHeader}>
               <View>
@@ -624,7 +645,7 @@ export default function ProfileScreen() {
                   {profile?.full_name?.toUpperCase() || 'NEW DONOR'}
                 </Text>
                 <Text style={[styles.cardLocation, { fontFamily: theme.typography.bodySm.fontFamily }]}>
-                  {profile?.upazila ? `${profile.upazila}, ${profile.district}` : 'Dhaka, Bangladesh'}
+                  {displayLocation}
                 </Text>
               </View>
               <View style={[styles.bloodBadge, { borderRadius: theme.radius.md }]}>
@@ -641,7 +662,7 @@ export default function ProfileScreen() {
                   DONATIONS
                 </Text>
                 <Text style={[styles.cardInfoVal, { fontFamily: theme.typography.bodySm.fontFamily }]}>
-                  {donationCount} drops • Since {donorYear}
+                  {donationCount} {donationCount === 1 ? 'drop' : 'drops'} • Since {donorYear}
                 </Text>
               </View>
               
@@ -663,15 +684,16 @@ export default function ProfileScreen() {
               </View>
             </View>
           </LinearGradient>
+          </AnimatedPressable>
         </View>
 
         {/* User profile photo selector */}
         <View style={styles.avatarSection}>
-          <TouchableOpacity 
+          <AnimatedPressable 
             style={[styles.avatarWrapper, { borderColor: theme.colors.border.subtle }]} 
             onPress={handlePickAvatar}
             disabled={isUploading}
-            activeOpacity={0.8}
+            activeScale={0.94}
           >
             <AvatarImage 
               uri={profile?.avatar_url} 
@@ -686,7 +708,7 @@ export default function ProfileScreen() {
                 <Camera size={14} color="#FFF" weight="fill" />
               )}
             </View>
-          </TouchableOpacity>
+          </AnimatedPressable>
           
           <Text style={[styles.profileNameText, { 
             fontFamily: theme.typography.h2.fontFamily,
@@ -1139,7 +1161,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.settingsLabel, { 
                     fontFamily: theme.typography.body.fontFamily,
                     color: theme.colors.text.primary 
-                  }]}>7. Guided Demo Walkthrough</Text>
+                  }]}>7. Interactive Demo Guide</Text>
                 </View>
                 <Text style={[styles.settingsSubLabel, { 
                   fontFamily: theme.typography.bodySm.fontFamily,
@@ -1156,7 +1178,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.demoBtnText, { 
                   color: theme.colors.text.onColor,
                   fontFamily: theme.typography.caption.fontFamily 
-                }]}>WALKTHROUGH</Text>
+                }]}>START</Text>
               </TouchableOpacity>
             </View>
 
@@ -1264,7 +1286,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 110,
+    paddingBottom: 150,
   },
   cardWrapper: {
     alignItems: 'center',

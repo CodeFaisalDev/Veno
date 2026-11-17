@@ -862,10 +862,26 @@ export default function DeveloperDemoOverlay() {
     <Animated.View 
       style={[
         styles.overlayContainer, 
-        { 
+        isExpanded ? {
           transform: [{ scale: scaleAnim }],
           backgroundColor: theme.colors.bg.surface,
           borderColor: theme.colors.border.strong,
+          borderWidth: 1,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 10,
+          right: 16,
+          bottom: Platform.OS === 'ios' ? 95 : 82,
+        } : {
+          transform: [{ scale: scaleAnim }],
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+          right: 8,
+          bottom: Platform.OS === 'ios' ? 98 : 86,
         }
       ]}
     >
@@ -876,7 +892,12 @@ export default function DeveloperDemoOverlay() {
               <Gear size={18} color={theme.colors.brand.default} />
               <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>Developer Sandbox</Text>
             </View>
-            <TouchableOpacity onPress={() => setIsExpanded(false)} style={styles.closeBtn}>
+            <TouchableOpacity 
+              onPress={() => setIsExpanded(false)} 
+              style={styles.closeBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+            >
               <X size={16} color={theme.colors.text.secondary} />
             </TouchableOpacity>
           </View>
@@ -948,13 +969,12 @@ export default function DeveloperDemoOverlay() {
         </View>
       ) : (
         <TouchableOpacity 
-          style={[styles.collapsedBtn, { backgroundColor: theme.colors.brand.default }]}
+          style={styles.collapsedBtn}
           onPress={() => setIsExpanded(true)}
+          activeOpacity={0.6}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Gear size={22} color="#FFF" weight="fill" />
-          <View style={styles.pulseBadge}>
-            <Text style={styles.badgeText}>{demoStep}</Text>
-          </View>
+          <Gear size={12} color={theme.dark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.3)'} weight="bold" />
         </TouchableOpacity>
       )}
     </Animated.View>
@@ -964,46 +984,19 @@ export default function DeveloperDemoOverlay() {
 const styles = StyleSheet.create({
   overlayContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 90 : 76,
-    right: 16,
     borderRadius: 16,
-    borderWidth: 1,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
     zIndex: 9999,
   },
   collapsedBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  pulseBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#EF4444',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FFF',
-  },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: 'bold',
+    backgroundColor: 'rgba(128, 128, 128, 0.15)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(128, 128, 128, 0.25)',
+    opacity: 0.35,
   },
   expandedContent: {
     padding: 16,

@@ -53,7 +53,7 @@ import { useMapStatus } from '../../hooks/useMapStatus';
 import StaticMapFallback from '../../components/StaticMapFallback';
 import { registerForPushNotificationsAsync } from '../../utils/notifications';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(globalThis as any).nativeFabricUIManager) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 

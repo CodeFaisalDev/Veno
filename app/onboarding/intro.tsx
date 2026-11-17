@@ -179,7 +179,12 @@ export default function IntroScreen() {
   const SlideMatching = () => (
     <View style={styles.slide}>
       <View style={styles.skipRow}>
-        <TouchableOpacity onPress={() => router.push('/auth/login')}>
+        <TouchableOpacity 
+          onPress={() => router.push('/auth/login')}
+          hitSlop={{ top: 16, bottom: 16, left: 24, right: 16 }}
+          style={{ padding: 8 }}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.skipText, { 
             fontFamily: theme.typography.caption.fontFamily,
             color: theme.colors.text.secondary 
@@ -286,7 +291,12 @@ export default function IntroScreen() {
   const SlideNotified = () => (
     <View style={styles.slide}>
       <View style={styles.skipRow}>
-        <TouchableOpacity onPress={() => router.push('/auth/login')}>
+        <TouchableOpacity 
+          onPress={() => router.push('/auth/login')}
+          hitSlop={{ top: 16, bottom: 16, left: 24, right: 16 }}
+          style={{ padding: 8 }}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.skipText, { 
             fontFamily: theme.typography.caption.fontFamily,
             color: theme.colors.text.secondary 

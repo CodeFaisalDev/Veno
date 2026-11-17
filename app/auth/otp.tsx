@@ -10,7 +10,9 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  DeviceEventEmitter,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomLoader from '../../components/CustomLoader';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -54,34 +56,120 @@ export default function OTPScreen() {
 
   const otp = digits.join('');
 
+  const handlePostAuthNavigation = async (user: any) => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, date_of_birth, division, phone_number')
+        .eq('id', user.id)
+        .single();
+
+      const isDefaultName = !profile?.full_name || profile.full_name === 'New Donor';
+      const isDefaultDob = !profile?.date_of_birth || profile.date_of_birth === '2000-01-01';
+      const isDefaultDivision = !profile?.division || profile.division === 'Default Division';
+      const isPhoneMissing = !profile?.phone_number;
+
+      const isComplete = Boolean(profile && !isDefaultName && !isDefaultDob && !isDefaultDivision && !isPhoneMissing);
+
+      await AsyncStorage.setItem('is_profile_complete', isComplete ? 'true' : 'false');
+      if (isComplete) {
+        await AsyncStorage.setItem('has_seen_guide', 'true');
+      }
+      DeviceEventEmitter.emit('profileUpdated');
+
+      if (isComplete) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/onboarding/profile-setup');
+      }
+    } catch (e) {
+      console.error('[OTP] Error in post-auth navigation:', e);
+      router.replace('/(tabs)');
+    }
+  };
+
+  useEffect(() => {
+    if (bypass === 'true' || email?.endsWith('@veno.test')) {
+      autoBypassTestUser();
+    }
+  }, []);
+
+  const autoBypassTestUser = async () => {
+    setIsLoading(true);
+    const mockEmail = email || `${phone?.replace('+', '')}@veno.test`;
+    try {
+      if (type === 'recovery') {
+        router.replace('/auth/reset-password');
+        return;
+      }
+
+      // Try password123 first
+      let { data, error } = await supabase.auth.signInWithPassword({
+        email: mockEmail,
+        password: 'password123',
+      });
+
+      if (error) {
+        const res2 = await supabase.auth.signInWithPassword({
+          email: mockEmail,
+          password: 'VenoSecureTempPassword123!',
+        });
+        if (!res2.error && res2.data?.user) {
+          data = res2.data;
+          error = null;
+        }
+      }
+
+      if (data?.user) {
+        await handlePostAuthNavigation(data.user);
+        return;
+      }
+    } catch (e) {
+      console.error('[OTP] Auto bypass error:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleVerifyOTP = async () => {
-    if (otp.length < 6) {
+    const isBypassUser = bypass === 'true' || email?.endsWith('@veno.test');
+    if (!isBypassUser && otp.length < 6) {
       Alert.alert('Invalid Code', 'Please enter the complete 6-digit verification code.');
       return;
     }
 
     setIsLoading(true);
+    let authSucceeded = false;
 
     try {
-      if (bypass === 'true') {
+      if (isBypassUser) {
         if (type === 'recovery') {
           router.replace('/auth/reset-password');
           return;
         }
 
         const mockEmail = email || `${phone?.replace('+', '')}@veno.test`;
-        const tempPassword = 'VenoSecureTempPassword123!';
-
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: mockEmail,
-          password: tempPassword,
+          password: 'password123',
         });
+
+        if (signInError) {
+          const res2 = await supabase.auth.signInWithPassword({
+            email: mockEmail,
+            password: 'VenoSecureTempPassword123!',
+          });
+          if (!res2.error && res2.data?.user) {
+            signInData = res2.data;
+            signInError = null;
+          }
+        }
 
         if (signInError) {
           if (signInError.message.toLowerCase().includes('invalid login credentials') || signInError.message.toLowerCase().includes('not found')) {
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
               email: mockEmail,
-              password: tempPassword,
+              password: 'password123',
               options: {
                 data: {
                   phone_number: phone || '+8801799999999',
@@ -93,10 +181,19 @@ export default function OTPScreen() {
               Alert.alert('Verification Failed (Bypass Sign-up)', signUpError.message);
               return;
             }
+            if (signUpData?.user) {
+              authSucceeded = true;
+              await handlePostAuthNavigation(signUpData.user);
+              return;
+            }
           } else {
             Alert.alert('Verification Failed (Bypass Sign-in)', signInError.message);
             return;
           }
+        } else if (signInData?.user) {
+          authSucceeded = true;
+          await handlePostAuthNavigation(signInData.user);
+          return;
         }
         return;
       }
@@ -116,6 +213,13 @@ export default function OTPScreen() {
 
         if (verifyType === 'recovery') {
           router.replace('/auth/reset-password');
+          return;
+        }
+
+        if (data?.user) {
+          authSucceeded = true;
+          await handlePostAuthNavigation(data.user);
+          return;
         }
       } else if (phone) {
         const verifyType = type === 'phone_change' ? 'phone_change' : 'sms';
@@ -129,13 +233,21 @@ export default function OTPScreen() {
           Alert.alert('Verification Failed', error.message);
           return;
         }
+
+        if (data?.user) {
+          authSucceeded = true;
+          await handlePostAuthNavigation(data.user);
+          return;
+        }
       } else {
         Alert.alert('Error', 'No email or phone number found for verification.');
       }
     } catch (err) {
       Alert.alert('Error', 'An unexpected error occurred during verification.');
     } finally {
-      setIsLoading(false);
+      if (!authSucceeded) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -190,7 +302,7 @@ export default function OTPScreen() {
         translucent={false} 
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView

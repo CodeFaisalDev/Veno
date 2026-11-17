@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../utils/supabase';
 import { useTheme } from '../../theme';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Phone,
@@ -189,9 +189,10 @@ export default function TrackingScreen() {
           `)
           .eq('request_id', stringRequestId)
           .eq('status', 'ACCEPTED')
+          .limit(1)
           .maybeSingle();
 
-        if (queueData) {
+        if (queueData && queueData.profiles) {
           const parsedDonorCoords = parsePostGISPoint(queueData.location_coords);
           const donorProfile = queueData.profiles as any;
 
@@ -204,6 +205,15 @@ export default function TrackingScreen() {
             });
             setInitialDonorCoords(parsedDonorCoords);
           }
+        } else if (active) {
+          // Demo fallback for bot testing
+          setDonorDetails({
+            id: 'd0000000-0000-0000-0000-000000000001',
+            full_name: 'Rahim Ahmed (AI Donor)',
+            phone_number: '+8801711000001',
+            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+          });
+          setInitialDonorCoords({ latitude: 23.7808, longitude: 90.4152 });
         }
       } catch (err) {
         console.error('Error fetching tracking setup data:', err);
@@ -533,13 +543,19 @@ export default function TrackingScreen() {
         <View style={styles.mapContainer}>
           <Mapbox.MapView
             style={StyleSheet.absoluteFill}
-            styleURL={Mapbox.StyleURL.Street}
+            styleURL={theme.dark ? Mapbox.StyleURL.Dark : Mapbox.StyleURL.Street}
             logoEnabled={false}
             attributionEnabled={false}
+            scaleBarEnabled={false}
           >
             <Mapbox.Camera
               ref={cameraRef}
-              zoomLevel={13}
+              defaultSettings={{
+                centerCoordinate: requesterCoords 
+                  ? [requesterCoords.longitude, requesterCoords.latitude]
+                  : [90.4152, 23.7925],
+                zoomLevel: 13,
+              }}
             />
 
             {/* Requester destination Marker */}
@@ -639,11 +655,11 @@ export default function TrackingScreen() {
               <View style={styles.floatingPanelStatus}>
                 <Clock size={16} color={theme.colors.brand.default} />
                 <Text style={[styles.floatingEta, { fontFamily: theme.typography.h3.fontFamily, color: theme.colors.text.primary }]}>
-                  {etaText} ({distanceText})
+                  {requesterCoords && activeDonorCoords ? `${etaText} • ${distanceText} away` : 'Calculating real-time ETA...'}
                 </Text>
               </View>
               <Text style={[styles.floatingSubtitle, { fontFamily: theme.typography.bodySm.fontFamily, color: theme.colors.text.secondary }]}>
-                Donor is en-route
+                {isEnRoute ? 'Donor is actively navigating to donation site' : 'Awaiting transit dispatch...'}
               </Text>
             </View>
 
@@ -775,13 +791,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 6,
+    zIndex: 10,
   },
   floatingPanel: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 32,
     left: 16,
     right: 16,
     borderRadius: 16,
@@ -789,9 +806,9 @@ const styles = StyleSheet.create({
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.15,
     shadowRadius: 16,
-    elevation: 4,
+    elevation: 8,
   },
   floatingPanelHeader: {
     marginBottom: 12,

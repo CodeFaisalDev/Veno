@@ -11,6 +11,8 @@ import {
   DeviceEventEmitter,
   Animated,
   Dimensions,
+  Platform,
+  Easing,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../../components/CustomModal';
@@ -41,6 +43,7 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '../../theme';
 import CustomLoader from '../../components/CustomLoader';
+import AnimatedPressable from '../../components/AnimatedPressable';
 import { useMapStatus } from '../../hooks/useMapStatus';
 import AnimatedScreenWrapper from '../../components/AnimatedScreenWrapper';
 
@@ -117,11 +120,11 @@ export default function RequestDashboardScreen() {
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.spring(sheetAnim, {
+    Animated.timing(sheetAnim, {
       toValue: isSheetExpanded ? 1 : 0,
+      duration: 260,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
       useNativeDriver: false,
-      friction: 12,
-      tension: 50,
     }).start();
   }, [isSheetExpanded]);
 
@@ -371,7 +374,15 @@ export default function RequestDashboardScreen() {
 
   const fetchCurrentLocation = async () => {
     try {
-      let location: Location.LocationObject | null = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      let location: Location.LocationObject | null = null;
+      try {
+        location = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+      } catch {
+        location = null;
+      }
       if (!location) {
         location = await Location.getLastKnownPositionAsync({});
       }
@@ -508,9 +519,10 @@ export default function RequestDashboardScreen() {
   useEffect(() => {
     if (!activeRequest) return;
 
-    // A. Listen to Realtime Postgres queue changes
+    // A. Listen to Realtime Postgres queue changes with unique channel ID
+    const queueChannelKey = `request_queues_realtime:${activeRequest.id}:${Date.now()}`;
     const queueChannel = supabase
-      .channel(`request_queues_realtime:${activeRequest.id}`)
+      .channel(queueChannelKey)
       .on(
         'postgres_changes',
         {
@@ -526,7 +538,8 @@ export default function RequestDashboardScreen() {
       .subscribe();
 
     // B. Subscribe to Presence Live Geolocation tracking stream
-    const trackingChannel = supabase.channel(`tracking:${activeRequest.id}`);
+    const trackingChannelKey = `tracking:${activeRequest.id}:${Date.now()}`;
+    const trackingChannel = supabase.channel(trackingChannelKey);
 
     const handleSync = () => {
       const state = trackingChannel.presenceState();
@@ -549,8 +562,8 @@ export default function RequestDashboardScreen() {
       .subscribe();
 
     return () => {
-      queueChannel.unsubscribe();
-      trackingChannel.unsubscribe();
+      supabase.removeChannel(queueChannel);
+      supabase.removeChannel(trackingChannel);
     };
   }, [activeRequest?.id]);
 
@@ -1022,7 +1035,7 @@ export default function RequestDashboardScreen() {
   if (hasPermission === false) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-        <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} backgroundColor={theme.colors.bg.page} />
+        <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} backgroundColor={theme.colors.bg.page} translucent={false} />
         <View style={styles.permissionWrapper}>
           <WarningCircle size={56} color={theme.colors.brand.default} weight="duotone" />
           <Text style={styles.permissionTitle}>GPS Location Required</Text>
@@ -1061,7 +1074,13 @@ export default function RequestDashboardScreen() {
       {/* Map Segment (Top 2/3 of screen) */}
       <View style={styles.mapSegment}>
         {mapEnabled && isFocused ? (
-          <Mapbox.MapView style={StyleSheet.absoluteFill} styleURL={Mapbox.StyleURL.Street} logoEnabled={false} attributionEnabled={false}>
+          <Mapbox.MapView 
+            style={StyleSheet.absoluteFill} 
+            styleURL={theme.dark ? Mapbox.StyleURL.Dark : Mapbox.StyleURL.Street} 
+            logoEnabled={false} 
+            attributionEnabled={false}
+            scaleBarEnabled={false}
+          >
             <Mapbox.Camera
               ref={cameraRef}
               zoomLevel={13}
@@ -1363,18 +1382,22 @@ export default function RequestDashboardScreen() {
         {/* Floating Side Map Controls */}
         <View style={styles.floatControlStack}>
           {activeRequest && requestCoordinates && (
-            <TouchableOpacity 
+            <AnimatedPressable 
               style={[styles.floatBtn, styles.requestLocationFloatBtn]} 
               onPress={handleFocusRequestLocation}
-              activeOpacity={0.8}
+              activeScale={0.88}
             >
               <Target size={20} color={theme.colors.brand.default} weight="bold" />
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
 
-          <TouchableOpacity style={styles.floatBtn} onPress={handleRecenterMap} activeOpacity={0.8}>
+          <AnimatedPressable 
+            style={styles.floatBtn} 
+            onPress={handleRecenterMap} 
+            activeScale={0.88}
+          >
             <NavigationArrow size={20} color={theme.colors.text.primary} weight="fill" />
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
 
@@ -1386,7 +1409,7 @@ export default function RequestDashboardScreen() {
             ? {
                 maxHeight: sheetAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [155, SCREEN_HEIGHT * 0.76],
+                  outputRange: [215, SCREEN_HEIGHT * 0.82],
                 }),
               }
             : null,
@@ -1404,14 +1427,14 @@ export default function RequestDashboardScreen() {
             <Text style={styles.emptyPanelDesc}>
               Alert nearby compatible active donors instantly when you or someone else needs blood.
             </Text>
-            <TouchableOpacity
-              style={styles.requestCtaBtn}
+            <AnimatedPressable
+              style={[styles.requestCtaBtn, theme.shadows.elevation2]}
               onPress={() => router.push('/request/create')}
-              activeOpacity={0.8}
+              activeScale={0.96}
             >
               <Plus size={18} color={theme.colors.text.onColor} weight="bold" />
               <Text style={styles.requestCtaBtnText}>REQUEST BLOOD</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         ) : (
           // Active Matching Queue Dashboard
@@ -1465,23 +1488,24 @@ export default function RequestDashboardScreen() {
                   </Text>
                 </View>
 
-                <TouchableOpacity 
+                <AnimatedPressable 
                   style={styles.requestLocationHeaderBtn} 
                   onPress={handleFocusRequestLocation}
-                  activeOpacity={0.8}
+                  activeScale={0.92}
                 >
                   <Target size={14} color={theme.colors.brand.default} weight="bold" />
                   <Text style={styles.requestLocationHeaderBtnText}>Location</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
 
             {/* Sliding scroll list of nearby invitation queues */}
-            <ScrollView 
-              style={styles.queueScroll} 
-              contentContainerStyle={styles.queueScrollContainer}
-              showsVerticalScrollIndicator={false}
-            >
+            <Animated.View style={{ flex: 1, opacity: sheetAnim }}>
+              <ScrollView 
+                style={styles.queueScroll} 
+                contentContainerStyle={styles.queueScrollContainer}
+                showsVerticalScrollIndicator={false}
+              >
               {matchedDonor && (
                 <View style={styles.matchedBannerContainer}>
                   <View style={styles.matchedBannerIconWrapper}>
@@ -1492,6 +1516,14 @@ export default function RequestDashboardScreen() {
                     <Text style={styles.matchedBannerSubtitle}>
                       {matchedDonor.profiles?.full_name} has accepted and is navigating to {activeRequest.location_address}.
                     </Text>
+                    <AnimatedPressable 
+                      style={[styles.bannerCompleteBtn, { backgroundColor: theme.colors.status.active }]}
+                      onPress={handleCompleteRequest}
+                      activeScale={0.96}
+                    >
+                      <CheckCircle size={15} color="#FFF" weight="fill" />
+                      <Text style={styles.bannerCompleteBtnText}>MARK AS FULFILLED / COMPLETE</Text>
+                    </AnimatedPressable>
                   </View>
                 </View>
               )}
@@ -1634,19 +1666,13 @@ export default function RequestDashboardScreen() {
               )}
             </ScrollView>
 
-            {/* Footer Control Panel (Complete/Cancel Request) */}
+            {/* Footer Control Panel (Cancel Request) */}
             <View style={[styles.panelFooter, { borderTopColor: theme.colors.border.subtle }]}>
-              {matchedDonor ? (
-                <TouchableOpacity style={styles.completeBtn} onPress={handleCompleteRequest}>
-                  <CheckCircle size={18} color="#FFF" weight="fill" />
-                  <Text style={styles.completeBtnText}>MARK AS FULLFILLED / COMPLETE</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              <TouchableOpacity style={styles.cancelRequestLink} onPress={handleCancelRequest}>
+              <TouchableOpacity style={styles.cancelRequestLink} onPress={handleCancelRequest} activeOpacity={0.7}>
                 <Text style={styles.cancelRequestLinkText}>Cancel Blood Request</Text>
               </TouchableOpacity>
             </View>
+            </Animated.View>
           </View>
         )}
       </Animated.View>
@@ -1718,11 +1744,11 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   floatControlStack: {
     position: 'absolute',
-    bottom: 175,
+    bottom: 315,
     right: 16,
     gap: 10,
     alignItems: 'center',
-    zIndex: 95,
+    zIndex: 90,
   },
   floatBtn: {
     width: 44,
@@ -1833,7 +1859,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    zIndex: 90,
+    zIndex: 100,
     backgroundColor: theme.colors.bg.surfaceRaised,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -1877,7 +1903,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   emptyPanelContent: {
     flex: 1,
     padding: 24,
-    paddingBottom: 110,
+    paddingBottom: 136,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2045,7 +2071,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   queueScrollContainer: {
     padding: 16,
-    paddingBottom: 50,
+    paddingBottom: 150,
   },
   queueEyebrow: {
     fontFamily: theme.typography.caption.fontFamily,
@@ -2178,27 +2204,13 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     fontWeight: '500',
   },
   panelFooter: {
-    padding: 12,
-    paddingBottom: 110,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 88 : 76,
     borderTopWidth: 1,
     alignItems: 'center',
-    gap: 12,
-  },
-  completeBtn: {
-    width: '100%',
-    height: 48,
-    backgroundColor: theme.colors.status.active,
-    borderRadius: theme.radius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-  },
-  completeBtnText: {
-    fontFamily: theme.typography.bodyLg.fontFamily,
-    fontSize: 13,
-    color: '#FFF',
-    letterSpacing: 0.5,
+    backgroundColor: theme.colors.bg.surfaceRaised,
   },
   cancelRequestLink: {
     paddingVertical: 4,
@@ -2233,7 +2245,7 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   matchedBannerContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     padding: 12,
     borderRadius: theme.radius.md,
@@ -2241,6 +2253,24 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.status.active,
     marginBottom: 16,
+  },
+  bannerCompleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.sm,
+    elevation: 1,
+  },
+  bannerCompleteBtnText: {
+    fontFamily: theme.typography.caption.fontFamily,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.3,
   },
   matchedBannerIconWrapper: {
     width: 36,

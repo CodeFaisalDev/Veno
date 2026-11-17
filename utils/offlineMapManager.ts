@@ -6,19 +6,50 @@ const CACHE_COORDS_KEY = 'last_cached_map_coords';
 const OFFLINE_PACK_NAME = 'user_location_cache';
 const CACHE_DISTANCE_THRESHOLD_KM = 5.0; // Reuse cache if user is within 5km
 
-
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  try {
+    Mapbox.setAccessToken(MAPBOX_TOKEN);
+  } catch (e) {
+    console.warn('[OfflineMap] Failed to set Mapbox access token:', e);
+  }
+}
 
 /**
  * Caches a 20km bounding box around the user's current location.
  * Only downloads tiles if the user is further than 5km from the last cached location.
  */
 export async function cacheUserLocationRegion(latitude: number, longitude: number): Promise<void> {
+  if (!MAPBOX_TOKEN) {
+    console.log('[OfflineMap] No Mapbox access token configured, skipping tile caching.');
+    return;
+  }
+
   try {
     console.log(`[OfflineMap] Starting dynamic 20km cache check for: lat=${latitude.toFixed(4)}, lng=${longitude.toFixed(4)}`);
 
+    // Ensure access token is set before calling native offlineManager
+    try {
+      Mapbox.setAccessToken(MAPBOX_TOKEN);
+    } catch (tokenErr) {
+      console.warn('[OfflineMap] Could not ensure token:', tokenErr);
+    }
+
+    if (!Mapbox.offlineManager || typeof Mapbox.offlineManager.getPacks !== 'function') {
+      console.log('[OfflineMap] Mapbox offlineManager not supported on this runtime environment.');
+      return;
+    }
+
     // 1. Check if we already have a cached pack
-    const packs = await Mapbox.offlineManager.getPacks();
-    const existingPack = packs.find(p => p.name === OFFLINE_PACK_NAME);
+    let packs: any[] = [];
+    try {
+      packs = await Mapbox.offlineManager.getPacks();
+    } catch (packErr) {
+      console.warn('[OfflineMap] Failed to query existing packs:', packErr);
+      return;
+    }
+
+    const existingPack = Array.isArray(packs) ? packs.find(p => p?.name === OFFLINE_PACK_NAME) : null;
 
     // 2. Check if we can reuse the existing cache
     const lastCachedStr = await AsyncStorage.getItem(CACHE_COORDS_KEY);
@@ -72,13 +103,13 @@ export async function cacheUserLocationRegion(latitude: number, longitude: numbe
       },
       (offlineRegion, status) => {
         // Progress callback
-        if (status.percentage % 10 === 0 || status.percentage === 100) {
+        if (status && (status.percentage % 20 === 0 || status.percentage === 100)) {
           console.log(`[OfflineMap] Downloading tiles: ${status.percentage}%`);
         }
       },
       (offlineRegion, err) => {
         // Error callback
-        console.error('[OfflineMap] Download pack error:', err);
+        console.warn('[OfflineMap] Download pack error:', err);
       }
     );
 
@@ -86,6 +117,6 @@ export async function cacheUserLocationRegion(latitude: number, longitude: numbe
     await AsyncStorage.setItem(CACHE_COORDS_KEY, JSON.stringify({ lat: latitude, lng: longitude }));
     console.log('[OfflineMap] Caching complete for this region.');
   } catch (error) {
-    console.error('[OfflineMap] Caching execution failed:', error);
+    console.warn('[OfflineMap] Caching execution safely handled:', error);
   }
 }

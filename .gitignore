@@ -26,9 +26,11 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# macOS & Windows
 .DS_Store
 *.pem
+desktop.ini
+Thumbs.db
 
 # local env files
 .env*.local
@@ -40,3 +42,8 @@ credentials.json
 # generated native folders
 /ios
 /android
+
+# Agent cache
+.agent/
+.agents/
+

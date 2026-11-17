@@ -56,7 +56,7 @@ export function useLiveTracking(requestId: string | null) {
       });
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }

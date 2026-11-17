@@ -28,6 +28,7 @@ import {
   Heartbeat,
   ArrowRight,
   SealCheck,
+  Bell,
 } from 'phosphor-react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { useTheme } from '../../theme';
@@ -602,6 +603,18 @@ export default function DashboardScreen() {
   const isDonorActive = donorStatus?.state === 'ACTIVE';
   const displayStatus = donorStatus?.state || 'NOT_A_DONOR';
 
+  const formatDonorState = (state: string) => {
+    switch (state) {
+      case 'ACTIVE': return 'BEACON ACTIVE';
+      case 'PAUSED': return 'PAUSED';
+      case 'COOLDOWN': return 'IN COOLDOWN';
+      case 'INELIGIBLE': return 'INELIGIBLE';
+      case 'SUSPENDED': return 'SUSPENDED';
+      case 'NOT_A_DONOR': return 'STANDBY';
+      default: return state;
+    }
+  };
+
   // Get semantic badge colors matching VENO_DESIGN.md section 6.4
   const getBadgeStyle = () => {
     switch (displayStatus) {
@@ -627,6 +640,7 @@ export default function DashboardScreen() {
         <StatusBar 
           barStyle={theme.dark ? "light-content" : "dark-content"} 
           backgroundColor={theme.colors.bg.page} 
+          translucent={false}
         />
         
         {/* Header (Airbnb style: clean spacing, typography hierarchy, border-subtle) */}
@@ -634,48 +648,65 @@ export default function DashboardScreen() {
           backgroundColor: theme.colors.bg.surface,
           borderBottomColor: theme.colors.border.subtle,
         }]}>
-        <View style={styles.headerProfileRow}>
-          <AvatarImage 
-            uri={profile?.avatar_url} 
-            size={46} 
-            borderWidth={1.5}
-            borderColor={theme.colors.border.default}
-          />
-          <View style={styles.headerTextContainer}>
-            <Text style={[styles.brandLogo, { 
-              fontFamily: theme.typography.caption.fontFamily,
-              color: theme.colors.brand.default,
-            }]}>VENO</Text>
-            <View style={styles.nameBadgeRow}>
-              <Text style={[styles.greetingText, { 
-                fontFamily: theme.typography.h2.fontFamily,
-                color: theme.colors.text.primary,
-              }]}>Hello, {profile?.full_name || 'User'}</Text>
-              
-              {/* Verified / Not Verified badge */}
-              {profile?.verification_badge ? (
-                <View style={[styles.verifiedHeaderBadge, { backgroundColor: theme.colors.status.activeBg }]}>
-                  <SealCheck size={12} color={theme.colors.status.activeText} weight="fill" />
-                  <Text style={[styles.verifiedHeaderBadgeText, { color: theme.colors.status.activeText, fontFamily: theme.typography.badge.fontFamily }]}>
-                    Verified
-                  </Text>
-                </View>
-              ) : (
-                <TouchableOpacity 
-                   style={[styles.unverifiedHeaderBadge, { backgroundColor: theme.colors.status.criticalBg }]}
-                  onPress={() => router.push('/verify/nid-upload')}
-                  activeOpacity={0.7}
-                >
-                  <WarningCircle size={12} color={theme.colors.status.criticalText} weight="fill" />
-                  <Text style={[styles.unverifiedHeaderBadgeText, { color: theme.colors.status.criticalText, fontFamily: theme.typography.badge.fontFamily }]}>
-                    Unverified
-                  </Text>
-                </TouchableOpacity>
-              )}
+          <View style={styles.headerProfileRow}>
+            <AvatarImage 
+              uri={profile?.avatar_url} 
+              size={46} 
+              borderWidth={1.5}
+              borderColor={theme.colors.border.default}
+            />
+            <View style={styles.headerTextContainer}>
+              <Text style={[styles.brandLogo, { 
+                fontFamily: theme.typography.caption.fontFamily,
+                color: theme.colors.brand.default,
+              }]}>VENO</Text>
+              <View style={styles.nameBadgeRow}>
+                <Text style={[styles.greetingText, { 
+                  fontFamily: theme.typography.h2.fontFamily,
+                  color: theme.colors.text.primary,
+                }]}>Hello, {profile?.full_name || 'User'}</Text>
+                
+                {/* Verified / Not Verified badge */}
+                {profile?.verification_badge ? (
+                  <View style={[styles.verifiedHeaderBadge, { backgroundColor: theme.colors.status.activeBg }]}>
+                    <SealCheck size={12} color={theme.colors.status.activeText} weight="fill" />
+                    <Text style={[styles.verifiedHeaderBadgeText, { color: theme.colors.status.activeText, fontFamily: theme.typography.badge.fontFamily }]}>
+                      Verified
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity 
+                     style={[styles.unverifiedHeaderBadge, { backgroundColor: theme.colors.status.criticalBg }]}
+                    onPress={() => router.push('/verify/nid-upload')}
+                    activeOpacity={0.7}
+                  >
+                    <WarningCircle size={12} color={theme.colors.status.criticalText} weight="fill" />
+                    <Text style={[styles.unverifiedHeaderBadgeText, { color: theme.colors.status.criticalText, fontFamily: theme.typography.badge.fontFamily }]}>
+                      Unverified
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={[styles.headerBellBtn, { backgroundColor: theme.colors.bg.subtle, borderColor: theme.colors.border.subtle }]}
+            onPress={() => {
+              showCustomAlert({
+                title: 'Activity Notifications',
+                description: 'All emergency matching dispatch alerts and vital notifications will appear here.',
+                confirmText: 'Understood',
+                type: 'info',
+                onConfirm: () => setModalVisible(false),
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Bell size={20} color={theme.colors.text.primary} weight="regular" />
+            <View style={[styles.headerBellDot, { backgroundColor: theme.colors.brand.default }]} />
+          </TouchableOpacity>
         </View>
-      </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
@@ -766,9 +797,9 @@ export default function DashboardScreen() {
               style={[styles.recipientEmptyCard, {
                 backgroundColor: theme.colors.bg.surface,
                 borderRadius: theme.radius.lg,
-                borderColor: theme.colors.border.subtle,
-                borderWidth: 1,
-                ...theme.shadows.elevation1,
+                borderColor: theme.colors.brand.default + '35',
+                borderWidth: 1.5,
+                ...theme.shadows.elevation2,
               }]}
               onPress={() => router.push('/request/create')}
             >
@@ -777,14 +808,19 @@ export default function DashboardScreen() {
                   <Plus size={22} color={theme.colors.brand.default} weight="bold" />
                 </View>
                 <View style={styles.emptyTextCol}>
-                  <Text style={[styles.emptyTitle, { color: theme.colors.text.primary, fontFamily: theme.typography.h3.fontFamily }]}>
-                    Request Blood Donation
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <Text style={[styles.emptyTitle, { color: theme.colors.text.primary, fontFamily: theme.typography.h3.fontFamily }]}>
+                      Request Blood Donation
+                    </Text>
+                    <View style={{ backgroundColor: theme.colors.brand.subtle, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: theme.colors.brand.default, letterSpacing: 0.5 }}>URGENT</Text>
+                    </View>
+                  </View>
                   <Text style={[styles.emptyDesc, { color: theme.colors.text.secondary, fontFamily: theme.typography.bodySm.fontFamily }]}>
-                    Pin location coordinates and immediately notify matching donors within a 5-10km radius.
+                    Broadcast immediate emergency notification to matching donors within 5–10km.
                   </Text>
                 </View>
-                <ArrowRight size={18} color={theme.colors.text.tertiary} />
+                <ArrowRight size={18} color={theme.colors.brand.default} weight="bold" />
               </View>
             </AnimatedPressable>
           )}
@@ -1032,7 +1068,7 @@ export default function DashboardScreen() {
                     fontFamily: theme.typography.badge.fontFamily,
                     color: badgeColors.text,
                   }]}>
-                    {displayStatus}
+                    {formatDonorState(displayStatus)}
                   </Text>
                 </View>
               </View>
@@ -1047,7 +1083,7 @@ export default function DashboardScreen() {
                   ? "You are currently in recovery cooldown following a successful donation. Thank you for your service!"
                   : donorStatus?.state === 'INELIGIBLE'
                   ? "Your account is flagged ineligible due to medical/health rules. Please update your profile."
-                  : "You are paused. You will not receive any blood request notification alerts."
+                  : "Your beacon is on standby. Switch to Active to receive urgent donation alerts from nearby patients."
                 }
               </Text>
 
@@ -1092,10 +1128,24 @@ export default function DashboardScreen() {
           
           <View style={styles.gridRow}>
             {/* Blood Type Card */}
-            <View style={[styles.gridCard, { 
-              backgroundColor: theme.colors.bg.subtle,
-              borderRadius: theme.radius.md,
-            }]}>
+            <AnimatedPressable 
+              style={[styles.gridCard, { 
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
+              }]}
+              onPress={() => {
+                showCustomAlert({
+                  title: `Blood Type: ${profile?.blood_group || 'O+'}`,
+                  description: `As an ${profile?.blood_group || 'O+'} donor, your red blood cells can provide life-saving support to compatible local emergency recipients.`,
+                  confirmText: 'Understood',
+                  type: 'info',
+                  onConfirm: () => setModalVisible(false),
+                });
+              }}
+            >
               <View style={[styles.iconContainer, { backgroundColor: theme.colors.brand.subtle }]}>
                 <Drop size={18} color={theme.colors.brand.default} weight="fill" />
               </View>
@@ -1109,13 +1159,27 @@ export default function DashboardScreen() {
                 fontFamily: theme.typography.caption.fontFamily,
                 color: theme.colors.text.secondary,
               }]}>BLOOD TYPE</Text>
-            </View>
+            </AnimatedPressable>
 
             {/* Score Points Card */}
-            <View style={[styles.gridCard, { 
-              backgroundColor: theme.colors.bg.subtle,
-              borderRadius: theme.radius.md,
-            }]}>
+            <AnimatedPressable 
+              style={[styles.gridCard, { 
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
+              }]}
+              onPress={() => {
+                showCustomAlert({
+                  title: 'Reputation Honor Points',
+                  description: `You have ${profile?.points || 0} points. Verified donors earn +100 points for each fulfilled donation request.`,
+                  confirmText: 'View Badges',
+                  type: 'info',
+                  onConfirm: () => setModalVisible(false),
+                });
+              }}
+            >
               <View style={[styles.iconContainer, { backgroundColor: '#FFFBEB' }]}>
                 <Trophy size={18} color="#D4A017" weight="regular" />
               </View>
@@ -1129,15 +1193,29 @@ export default function DashboardScreen() {
                 fontFamily: theme.typography.caption.fontFamily,
                 color: theme.colors.text.secondary,
               }]}>SCORE POINTS</Text>
-            </View>
+            </AnimatedPressable>
           </View>
 
           <View style={styles.gridRow}>
             {/* Donations Card */}
-            <View style={[styles.gridCard, { 
-              backgroundColor: theme.colors.bg.subtle,
-              borderRadius: theme.radius.md,
-            }]}>
+            <AnimatedPressable 
+              style={[styles.gridCard, { 
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
+              }]}
+              onPress={() => {
+                showCustomAlert({
+                  title: 'Donation History',
+                  description: `You have completed ${totalDonations} verified blood donation${totalDonations === 1 ? '' : 's'} on the Veno network. Thank you for your service!`,
+                  confirmText: 'Close',
+                  type: 'success',
+                  onConfirm: () => setModalVisible(false),
+                });
+              }}
+            >
               <View style={[styles.iconContainer, { backgroundColor: '#EFFBF4' }]}>
                 <Heart size={18} color="#1F9952" weight="fill" />
               </View>
@@ -1151,13 +1229,27 @@ export default function DashboardScreen() {
                 fontFamily: theme.typography.caption.fontFamily,
                 color: theme.colors.text.secondary,
               }]}>DONATIONS</Text>
-            </View>
+            </AnimatedPressable>
 
             {/* Lives Saved Card */}
-            <View style={[styles.gridCard, { 
-              backgroundColor: theme.colors.bg.subtle,
-              borderRadius: theme.radius.md,
-            }]}>
+            <AnimatedPressable 
+              style={[styles.gridCard, { 
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
+              }]}
+              onPress={() => {
+                showCustomAlert({
+                  title: 'Lives Saved Impact',
+                  description: `Every whole blood donation can help separate platelets, plasma, and red cells to save up to 3 individual lives.`,
+                  confirmText: 'Inspiring!',
+                  type: 'success',
+                  onConfirm: () => setModalVisible(false),
+                });
+              }}
+            >
               <View style={[styles.iconContainer, { backgroundColor: '#EFF6FF' }]}>
                 <Users size={18} color="#0284C7" weight="bold" />
               </View>
@@ -1171,15 +1263,18 @@ export default function DashboardScreen() {
                 fontFamily: theme.typography.caption.fontFamily,
                 color: theme.colors.text.secondary,
               }]}>LIVES SAVED</Text>
-            </View>
+            </AnimatedPressable>
           </View>
 
           <View style={styles.gridRow}>
             {/* Next Eligibility Card */}
             <AnimatedPressable 
               style={[styles.gridCard, { 
-                backgroundColor: theme.colors.bg.subtle,
-                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
               }]}
               onPress={() => router.push('/profile/medical')}
             >
@@ -1205,8 +1300,11 @@ export default function DashboardScreen() {
             {/* Identity Badge Card */}
             <AnimatedPressable 
               style={[styles.gridCard, { 
-                backgroundColor: theme.colors.bg.subtle,
-                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.bg.surface,
+                borderRadius: theme.radius.lg,
+                borderColor: theme.colors.border.subtle,
+                borderWidth: 1,
+                ...theme.shadows.elevation1,
               }]}
               onPress={() => {
                 if (profile?.verification_badge) {
@@ -1298,9 +1396,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerBellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    marginLeft: 12,
+  },
+  headerBellDot: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 110,
+    paddingBottom: 150,
   },
   consoleSection: {
     marginBottom: 24,
